@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDFビューア・印刷</title>
+<link rel="stylesheet" href="style.css">
+<script src="vendor/pdfjs/pdf.min.js"></script>
+</head>
+<body>
+<header class="toolbar">
+  <label class="file-btn">
+    PDFを開く
+    <input type="file" id="file-input" accept="application/pdf">
+  </label>
+  <span id="file-name" class="file-name"></span>
+  <span id="page-info" class="page-info"></span>
+  <button id="print-btn" disabled>印刷</button>
+</header>
+<main id="viewer">
+  <p id="empty-message">PDFファイルを選択してください。</p>
+  <div id="pages"></div>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
