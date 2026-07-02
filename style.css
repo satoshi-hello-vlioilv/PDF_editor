@@ -1118,6 +1118,9 @@ body.theme-dark .dz-tags span {
 .btn-ocr { background: #8b5cf6; color: #fff; }
 .btn-ocr:hover:not(:disabled) { background: #7c3aed; }
 
+.btn-print { background: #475569; color: #fff; }
+.btn-print:hover:not(:disabled) { background: #334155; }
+
 /* =========================================================
    VIEWER LIGHTBOX
    ========================================================= */

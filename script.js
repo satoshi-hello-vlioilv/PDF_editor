@@ -2372,7 +2372,7 @@ async function drawTextOnPage(pdfPage, text, font, drawMode, baseW, baseH, pdfDo
   return currentPage;
 }
 
-async function exportItems(items, name) {
+async function exportItems(items, name, mode = 'download') {
   // 3Dアイテムは PDF エクスポートの対象外
   items = items.filter(w => w.type !== '3d');
   if (!items.length) return;
@@ -2750,18 +2750,71 @@ async function exportItems(items, name) {
 
     showProg(items.length, items.length, 'ファイル構築中');
     const bytes = await newDoc.save();
-    const a = document.createElement('a');
-    a.href     = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+
+    if (mode === 'print') {
+      showProg(items.length, items.length, '印刷準備中');
+      await printPdfBytes(bytes);
+    } else {
+      const a = document.createElement('a');
+      a.href     = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    }
   } catch (err) {
-    alert('エクスポートエラー: ' + err.message);
+    alert(mode === 'print' ? '印刷エラー: ' + err.message : 'エクスポートエラー: ' + err.message);
   } finally {
     hideProg();
   }
+}
+
+// 生成したPDFバイト列を隠しiframeに読み込み、ブラウザの印刷ダイアログを開く
+function printPdfBytes(bytes) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '1px';
+    iframe.style.height = '1px';
+    iframe.style.border = '0';
+    iframe.style.opacity = '0';
+
+    let done = false;
+    const cleanup = () => {
+      if (done) return;
+      done = true;
+      window.removeEventListener('focus', onFocusAfterPrint);
+      setTimeout(() => {
+        if (iframe.parentNode) document.body.removeChild(iframe);
+        URL.revokeObjectURL(url);
+      }, 1000);
+      resolve();
+    };
+    // 印刷ダイアログを閉じるとウィンドウにフォーカスが戻ることを利用してクリーンアップする
+    const onFocusAfterPrint = () => cleanup();
+
+    iframe.onload = () => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        window.addEventListener('focus', onFocusAfterPrint);
+      } catch (e) {
+        console.error('印刷起動エラー:', e);
+        window.open(url, '_blank');
+        cleanup();
+        return;
+      }
+      // フォーカスイベントが発火しない環境向けのフォールバック
+      setTimeout(cleanup, 60000);
+    };
+
+    document.body.appendChild(iframe);
+    iframe.src = url;
+  });
 }
 
 function getExportName(items, isAll) {
@@ -2975,6 +3028,17 @@ const expAll = async () => {
   const items = [...S.ws];
   const name = await getExportName(items, true);
   if (name) exportItems(items, name);
+};
+
+const printSel = async () => {
+  const items = S.ws.filter(w => S.sel.has(w.id));
+  if (!items.length) return;
+  exportItems(items, null, 'print');
+};
+const printAll = async () => {
+  const items = [...S.ws];
+  if (!items.length) return;
+  exportItems(items, null, 'print');
 };
 
 async function exportZip(items) {
@@ -7058,6 +7122,8 @@ function syncUI() {
   setD('btn-exp-sel', !hs);
   setD('btn-exp-all', !hp);
   setD('btn-exp-zip', !hs);
+  setD('btn-print-sel', !hs);
+  setD('btn-print-all', !hp);
   updateStat();
 }
 
@@ -7351,6 +7417,9 @@ function initEvents() {
     exportZip(items);
   });
 
+  g('btn-print-sel')?.addEventListener('click', printSel);
+  g('btn-print-all')?.addEventListener('click', printAll);
+
   g('shortcuts-close')?.addEventListener('click', () => {
     g('shortcuts-overlay').classList.add('hidden');
   });
@@ -7407,6 +7476,11 @@ function initEvents() {
     }
     if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
       e.preventDefault(); g('tb-search')?.focus(); return;
+    }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
+      e.preventDefault();
+      if (S.sel.size) printSel(); else printAll();
+      return;
     }
 
     if (e.key === 'Delete' || e.key === 'Backspace') { if (S.sel.size) { e.preventDefault(); delSel(); } }
