@@ -1272,6 +1272,22 @@
   </div>
 </div>
 
+<!-- ===================== PRINT ERROR MODAL ================ -->
+<div id="print-error-overlay" class="hidden overlay-common" role="alertdialog" aria-modal="true">
+  <div class="modal-box" style="width: 400px;">
+    <div class="modal-hd">
+      <div class="modal-title" style="color:var(--c-err);"><i class="fa-solid fa-triangle-exclamation"></i>印刷エラー</div>
+      <button class="vhd-btn close" id="print-error-close" title="閉じる"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body" style="padding: 20px;">
+      <p id="print-error-msg" style="font-size:13px; line-height:1.7; color:var(--c-t2); white-space:pre-line;">印刷の準備中にエラーが発生しました。</p>
+    </div>
+    <div class="modal-ft" style="padding: 12px 20px; border-top: 1px solid var(--c-bd); display:flex; justify-content:flex-end; background: #f8fafc;">
+      <button class="btn btn-pri" id="print-error-ok">OK</button>
+    </div>
+  </div>
+</div>
+
 <script src="script.js"></script>
 
 </body></html>

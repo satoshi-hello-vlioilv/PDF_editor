@@ -2462,7 +2462,18 @@ async function exportItems(items, name, mode = 'download') {
     if (isIncludeText && (textReflectMode === 'transparent' || textReflectMode === 'overlay')) {
       needsRasterizeGlobal = true; // 透明またはオーバーレイ描画の場合は元のテキスト層を消すため強制ラスタライズ
     }
-    
+
+    const getPageSize = (sizeStr) => {
+      switch(sizeStr) {
+        case 'A3': return [841.89, 1190.55];
+        case 'B4': return [708.66, 1000.63];
+        case 'B5': return [498.90, 708.66];
+        case 'Letter': return [612.00, 792.00];
+        case 'A4':
+        default: return [595.28, 841.89];
+      }
+    };
+
     if (needsRasterizeGlobal || items.some(it => (it.filters && getFilterString(it.filters) !== 'none') || it.scanFixData || it.flipH || it.flipV)) {
       for (let i = 0; i < items.length; i++) {
         showProg(i + 1, items.length, '画像化処理中');
@@ -2579,17 +2590,6 @@ async function exportItems(items, name, mode = 'download') {
 
         const isUniformA4 = g('meta-uniform-a4')?.checked;
         const uniformSize = g('uniform-size-sel')?.value || 'A4';
-        
-        const getPageSize = (sizeStr) => {
-          switch(sizeStr) {
-            case 'A3': return [841.89, 1190.55];
-            case 'B4': return [708.66, 1000.63];
-            case 'B5': return [498.90, 708.66];
-            case 'Letter': return [612.00, 792.00];
-            case 'A4':
-            default: return [595.28, 841.89];
-          }
-        };
 
         let pdfPage;
 
@@ -2632,6 +2632,7 @@ async function exportItems(items, name, mode = 'download') {
       }
     } else {
       const isUniformA4 = g('meta-uniform-a4')?.checked;
+      const uniformSize = g('uniform-size-sel')?.value || 'A4';
 
       const groups = new Map();
       items.forEach((item, i) => {
@@ -2764,10 +2765,28 @@ async function exportItems(items, name, mode = 'download') {
       setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     }
   } catch (err) {
-    alert(mode === 'print' ? '印刷エラー: ' + err.message : 'エクスポートエラー: ' + err.message);
+    console.error(err);
+    if (mode === 'print') {
+      showPrintError('印刷用のPDFを作成できませんでした。\n\n' + (err.message || err));
+    } else {
+      alert('エクスポートエラー: ' + err.message);
+    }
   } finally {
     hideProg();
   }
+}
+
+// 印刷エラー用モーダルを表示する
+function showPrintError(message) {
+  const overlay = g('print-error-overlay');
+  if (!overlay) { alert('印刷エラー: ' + message); return; }
+
+  g('print-error-msg').textContent = message;
+  overlay.classList.remove('hidden');
+
+  const close = () => overlay.classList.add('hidden');
+  g('print-error-close').onclick = close;
+  g('print-error-ok').onclick = close;
 }
 
 // 生成したPDFバイト列を隠しiframeに読み込み、ブラウザの印刷ダイアログを開く
@@ -7420,6 +7439,10 @@ function initEvents() {
   g('btn-print-sel')?.addEventListener('click', printSel);
   g('btn-print-all')?.addEventListener('click', printAll);
 
+  g('print-error-overlay')?.addEventListener('click', e => {
+    if (e.target === g('print-error-overlay')) g('print-error-overlay').classList.add('hidden');
+  });
+
   g('shortcuts-close')?.addEventListener('click', () => {
     g('shortcuts-overlay').classList.add('hidden');
   });
@@ -7433,6 +7456,12 @@ function initEvents() {
   });
 
   document.addEventListener('keydown', e => {
+    const printErrOverlay = g('print-error-overlay');
+    if (printErrOverlay && !printErrOverlay.classList.contains('hidden')) {
+      if (e.key === 'Escape') printErrOverlay.classList.add('hidden');
+      return;
+    }
+
     const ocrOverlay = g('ocr-overlay');
     if (ocrOverlay && !ocrOverlay.classList.contains('hidden')) {
       if (e.key === 'Escape') ocrOverlay.classList.add('hidden');
