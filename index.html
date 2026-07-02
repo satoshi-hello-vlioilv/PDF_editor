@@ -1,26 +1,1266 @@
 <!DOCTYPE html>
-<html lang="ja">
-<head>
+<html lang="ja"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PDFビューア・印刷</title>
+<title>PDF Studio Pro</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
-<script src="vendor/pdfjs/pdf.min.js"></script>
 </head>
 <body>
-<header class="toolbar">
-  <label class="file-btn">
-    PDFを開く
-    <input type="file" id="file-input" accept="application/pdf">
-  </label>
-  <span id="file-name" class="file-name"></span>
-  <span id="page-info" class="page-info"></span>
-  <button id="print-btn" disabled>印刷</button>
-</header>
-<main id="viewer">
-  <p id="empty-message">PDFファイルを選択してください。</p>
-  <div id="pages"></div>
-</main>
-<script src="app.js"></script>
-</body>
-</html>
+
+<div id="app">
+
+  <!-- ===================== TOOLBAR ===================== -->
+  <header id="toolbar">
+
+    <!-- ── Row 1: ファイル操作 / 検索 / 表示制御 ────────────── -->
+    <div class="tb-r1">
+      <button class="btn btn-gh btn-icon" id="btn-toggle-sb" title="サイドバーの表示/非表示">
+        <i class="fa-solid fa-bars"></i>
+      </button>
+
+      <span class="logo">
+        <i class="fa-solid fa-layer-group"></i>PDF Studio
+      </span>
+
+      <div class="btn-pri btn" id="btn-add" style="cursor:pointer">
+        <i class="fa-solid fa-plus"></i>追加
+      </div>
+
+      <button class="btn btn-gh" id="btn-add-blank" title="白紙ページを追加">
+        <i class="fa-regular fa-file"></i>白紙
+      </button>
+
+      <div class="tb-sep"></div>
+
+      <div class="search-box">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="text" id="tb-search" placeholder="テキスト検索 [Ctrl+F]" title="PDF内のテキストを検索し、該当ページのみ表示します">
+        <span id="search-hits" class="search-hits hidden">0件</span>
+        <button class="search-opt-btn" id="btn-search-opt" title="全角・半角 / 大文字・小文字を区別しない (クリックで切り替え)">
+          <i class="fa-solid fa-a"></i>
+        </button>
+      </div>
+
+      <div class="tb-sep"></div>
+
+      <button class="btn btn-err" id="btn-clear-all" disabled title="読み込んだデータをすべて削除して初期化">
+        <i class="fa-solid fa-broom"></i>全クリア
+      </button>
+
+      <div class="tb-gap"></div>
+
+      <!-- Thumbnail Auto-Fit controls -->
+      <button class="btn btn-gh btn-icon hidden th-fit-ctrl" id="btn-th-fit-100" title="100% (実寸) 表示"><i class="fa-solid fa-1"></i></button>
+      <button class="btn btn-gh btn-icon hidden th-fit-ctrl" id="btn-th-fit-w" title="ウィンドウ幅に合わせる"><i class="fa-solid fa-left-right"></i></button>
+      <button class="btn btn-gh btn-icon hidden th-fit-ctrl" id="btn-th-fit-h" title="ウィンドウ高さに合わせる"><i class="fa-solid fa-up-down"></i></button>
+
+      <!-- Card size slider (thumbnail view only) -->
+      <div class="size-ctrl hidden" id="size-ctrl" title="カードサイズ [サムネイル表示のみ]">
+        <i class="fa-solid fa-compress" title="小さく"></i>
+        <input type="range" id="size-slider" min="120" max="4000" value="444" step="8">
+        <i class="fa-solid fa-expand" title="大きく"></i>
+        <span id="size-val" style="font-family:var(--font-mo); font-size:10.5px; color:var(--c-t3); min-width:32px; text-align:right;">100%</span>
+      </div>
+
+      <div class="tb-sep hidden" id="size-sep"></div>
+
+      <div class="view-toggle">
+        <button class="vbtn on" id="vbtn-th" title="サムネイル表示 [T]">
+          <i class="fa-solid fa-grip"></i>
+        </button>
+        <button class="vbtn" id="vbtn-li" title="リスト表示 [L]">
+          <i class="fa-solid fa-list"></i>
+        </button>
+      </div>
+
+      <div class="tb-sep"></div>
+
+      <button class="btn btn-gh btn-icon" id="btn-toggle-theme" title="テーマ切り替え (ライト/ダーク)">
+        <i class="fa-solid fa-moon"></i>
+      </button>
+    </div><!-- /.tb-r1 -->
+
+    <!-- ── Row 2: ページ選択・操作・変形・編集・OCR・エクスポート ── -->
+    <div class="tb-r2">
+
+      <!-- 選択グループ -->
+      <button class="btn btn-gh btn-icon" id="btn-sel-all" title="全選択 [Ctrl+A]"><i class="fa-solid fa-check-double"></i></button>
+      <button class="btn btn-gh btn-icon" id="btn-desel"   disabled title="選択解除 [Esc]"><i class="fa-solid fa-xmark"></i></button>
+      <button class="btn btn-gh btn-icon" id="btn-inv"     disabled title="選択反転"><i class="fa-solid fa-arrow-right-arrow-left"></i></button>
+      <button class="btn btn-gh btn-icon" id="btn-sel-range" disabled title="範囲選択"><i class="fa-solid fa-list-ol"></i></button>
+
+      <div class="tb-sep"></div>
+
+      <!-- 履歴・比較グループ -->
+      <button class="btn btn-gh btn-icon" id="btn-undo" disabled title="元に戻す [Ctrl+Z]"><i class="fa-solid fa-rotate-left"></i></button>
+      <button class="btn btn-gh btn-icon" id="btn-redo" disabled title="やり直し [Ctrl+Y]"><i class="fa-solid fa-rotate-right"></i></button>
+      <div style="position:relative; display:inline-block;" id="hist-dropdown-wrap">
+        <button class="btn btn-gh btn-icon" id="btn-history" title="操作履歴リスト"><i class="fa-solid fa-clock-rotate-left"></i></button>
+        <div id="hist-dropdown" class="hidden"></div>
+      </div>
+      <button class="btn btn-gh btn-icon" id="btn-compare" disabled title="比較表示（2ページ選択時）"><i class="fa-solid fa-code-compare"></i></button>
+
+      <div class="tb-sep"></div>
+
+      <!-- 変形グループ（アンバー系） -->
+      <button class="btn btn-warn btn-icon" id="btn-copy"   disabled title="選択ページを複製 [Ctrl+D]"><i class="fa-regular fa-copy"></i></button>
+      <button class="btn btn-warn btn-icon" id="btn-rl"     disabled title="左に90度回転 [←]"><i class="fa-solid fa-rotate-left"></i></button>
+      <button class="btn btn-warn btn-icon" id="btn-rr"     disabled title="右に90度回転 [→]"><i class="fa-solid fa-rotate-right"></i></button>
+      <button class="btn btn-warn btn-icon" id="btn-align-v" disabled title="縦向きに統一"><i class="fa-solid fa-up-down"></i></button>
+      <button class="btn btn-warn btn-icon" id="btn-align-h" disabled title="横向きに統一"><i class="fa-solid fa-left-right"></i></button>
+      <button class="btn btn-warn btn-icon" id="btn-split"  disabled title="見開きページを左右に分割"><i class="fa-solid fa-table-columns"></i></button>
+      <button class="btn btn-warn btn-icon" id="btn-merge-h" disabled title="選択ページを横に結合"><i class="fa-solid fa-object-group"></i></button>
+      <button class="btn btn-warn btn-icon" id="btn-merge-v" disabled title="選択ページを縦に結合"><i class="fa-solid fa-layer-group"></i></button>
+      <button class="btn btn-warn btn-icon" id="btn-flip-h" disabled title="左右反転"><i class="fa-solid fa-left-right"></i></button>
+      <button class="btn btn-warn btn-icon" id="btn-flip-v" disabled title="上下反転"><i class="fa-solid fa-up-down"></i></button>
+
+      <div class="tb-sep"></div>
+
+      <!-- ページ編集グループ -->
+      <button class="btn btn-gh btn-icon" id="btn-edit-crop"    disabled title="余白トリミング（クロップ） (※1ページ選択時のみ有効)"><i class="fa-solid fa-crop-simple"></i></button>
+      <button class="btn btn-gh btn-icon" id="btn-edit-scanfix" disabled title="スキャン補正（微細回転・台形補正） (※1ページ選択時のみ有効)"><i class="fa-solid fa-object-ungroup"></i></button>
+      <button class="btn btn-gh btn-icon" id="btn-edit-paint"   disabled title="ペイント（描画・注釈） (※1ページ選択時のみ有効)"><i class="fa-solid fa-paintbrush"></i></button>
+      <button class="btn btn-gh btn-icon" id="btn-edit-adjust"  disabled title="画像調整（明るさ・コントラスト等） (※1ページ選択時のみ有効)"><i class="fa-solid fa-sliders"></i></button>
+
+      <div class="tb-sep"></div>
+
+      <!-- 削除（レッド系） -->
+      <button class="btn btn-err btn-icon" id="btn-del" disabled title="削除 [Del]"><i class="fa-solid fa-trash-can"></i></button>
+
+      <div class="tb-sep"></div>
+
+      <!-- OCR（パープル系） -->
+      <button class="btn btn-ocr" id="btn-ocr"     disabled title="選択ページのテキストを抽出 (テキスト層優先 / OCR)">
+        <i class="fa-solid fa-language"></i>選択OCR
+      </button>
+      <button class="btn btn-ocr" id="btn-ocr-all" disabled title="全ページのテキストを抽出">
+        <i class="fa-solid fa-layer-group"></i>全OCR
+      </button>
+
+      <div class="tb-gap"></div>
+
+      <!-- エクスポート（グリーン系） -->
+      <button class="btn btn-ok" id="btn-exp-sel" disabled title="選択ページをPDFで保存">
+        <i class="fa-solid fa-file-export"></i>選択保存
+      </button>
+      <button class="btn btn-ok" id="btn-exp-all" disabled title="全ページをPDFで保存">
+        <i class="fa-solid fa-download"></i>全て保存
+      </button>
+      <button class="btn btn-ok" id="btn-exp-zip" disabled title="選択ページをZIP(画像)で保存" style="background:#0ea5e9;">
+        <i class="fa-solid fa-file-zipper"></i>ZIP保存
+      </button>
+
+    </div><!-- /.tb-r2 -->
+
+  </header>
+
+  <!-- ===================== SIDEBAR ==================== -->
+  <aside id="sidebar">
+
+    <!-- タブナビゲーション -->
+    <div class="sb-tabs">
+      <button class="sb-tab active" data-tab="files">
+        <i class="fa-solid fa-folder-open"></i>ファイル
+      </button>
+      <button class="sb-tab" data-tab="settings">
+        <i class="fa-solid fa-sliders"></i>一括処理・出力
+      </button>
+    </div>
+
+    <!-- ── パネル 1: ファイル管理 ─────────────────────────── -->
+    <div class="sb-panel" id="sbp-files">
+      <div class="sb-hd">
+        <span class="sb-title"><i class="fa-solid fa-folder-open"></i>読み込みファイル</span>
+        <span class="sb-badge" id="sb-cnt">0件</span>
+      </div>
+      <div id="file-list">
+        <div class="sb-empty">
+          <i class="fa-regular fa-folder-open"></i>
+          <p>PDFや画像を追加すると<br>ここに一覧表示されます</p>
+        </div>
+      </div>
+      <div class="sb-drop" id="sb-drop">
+        <i class="fa-solid fa-cloud-arrow-up"></i>
+        <span>ドロップして追加</span>
+      </div>
+    </div><!-- /#sbp-files -->
+
+    <!-- ── パネル 2: 出力設定 ──────────────────────────────── -->
+    <div class="sb-panel hidden" id="sbp-settings">
+
+      <!-- 処理レシピ -->
+      <div class="sb-hd">
+        <span class="sb-title"><i class="fa-solid fa-bolt"></i>処理レシピ (マクロ)</span>
+      </div>
+      <div class="sb-settings" style="padding-bottom:16px;">
+        <select id="recipe-sel" style="width:100%; padding:6px 8px; border-radius:4px; font-size:11.5px; background:#111a26; color:#c8d8ea; border:1px solid rgba(255,255,255,.1); outline:none; cursor:pointer;">
+          <option value="">-- レシピを選択 --</option>
+          <option value="scan_std">Scan PDF 標準化 (傾き補正+OCR+A4白黒)</option>
+          <option value="redact_safe">セキュア共有 (マスキング+圧縮+A4)</option>
+          <option value="print_ready">印刷用 (A4+ページ番号+白黒)</option>
+        </select>
+        <button class="btn btn-pri" id="btn-apply-recipe" disabled style="width:100%; justify-content:center; margin-top:8px;">
+          <i class="fa-solid fa-play"></i> レシピを適用して設定
+        </button>
+      </div>
+
+      <!-- メタデータ -->
+      <div class="sb-hd" style="border-top: 1px solid var(--c-sb-bd);">
+        <span class="sb-title"><i class="fa-solid fa-file-pen"></i>メタデータ</span>
+      </div>
+      <div class="sb-settings">
+        <div class="fg">
+          <input type="text" id="meta-title" placeholder="タイトル (Title)">
+        </div>
+        <div class="fg">
+          <input type="text" id="meta-author" placeholder="作成者 (Author)">
+        </div>
+        <div class="fg">
+          <input type="text" id="meta-keywords" placeholder="キーワード (カンマ区切り)">
+        </div>
+        <div class="fg-toggle" title="※pdf-libは暗号化保存に未対応のため現在はモック動作となります">
+          <label class="tg-lbl">
+            <input type="checkbox" id="meta-encrypt" hidden>
+            <div class="tg-track"><div class="tg-thumb"></div></div>
+            <span><i class="fa-solid fa-lock"></i> パスワード保護設定</span>
+          </label>
+        </div>
+        <div class="fg hidden" id="pw-fields">
+          <input type="password" id="meta-pw" placeholder="閲覧パスワード">
+        </div>
+      </div>
+
+      <!-- 出力オプション -->
+      <div class="sb-hd" style="border-top: 1px solid var(--c-sb-bd);">
+        <span class="sb-title"><i class="fa-solid fa-wand-magic-sparkles"></i>出力オプション</span>
+      </div>
+      <div class="sb-settings">
+        <div class="fg-toggle" title="抽出・編集したテキストをPDFに出力し、テキスト情報を反映させます">
+          <label class="tg-lbl">
+            <input type="checkbox" id="meta-include-text" hidden>
+            <div class="tg-track"><div class="tg-thumb"></div></div>
+            <span><i class="fa-solid fa-font" style="color:#d1d5db;"></i> 編集テキストをPDFに反映</span>
+          </label>
+        </div>
+        <div class="fg hidden" id="text-reflect-fields" style="background:rgba(0,0,0,.2); padding:10px; border-radius:6px; margin-top:6px;">
+          <label style="font-size:10.5px; color:#dde6f0; display:block; margin-bottom:6px;">テキストの反映モード</label>
+          <select id="text-reflect-mode" style="width:100%; padding:5px; margin-bottom:8px; border-radius:4px; font-size:11px; background:#111a26; color:#c8d8ea; border:1px solid rgba(255,255,255,.1); outline:none;">
+            <option value="transparent">透明テキストとして埋め込み (検索・コピー用)</option>
+            <option value="replace">レイアウトを破棄してテキストのみで再構築</option>
+            <option value="overlay">画像に薄い白幕をかけてテキストを可視描画</option>
+          </select>
+          <p id="text-reflect-desc" style="font-size:10px; color:#94a3b8; line-height:1.4;">
+            見た目を保ったまま、検索やコピー用のテキストデータとして埋め込みます。<br>※元の文字との重複を防ぐため、自動的に各ページが画像化されます。
+          </p>
+        </div>
+
+        <div class="fg-toggle" title="出力時のページサイズを統一し、印刷時のズレを防ぎます" style="margin-top:8px;">
+          <label class="tg-lbl">
+            <input type="checkbox" id="meta-uniform-a4" hidden>
+            <div class="tg-track"><div class="tg-thumb"></div></div>
+            <span><i class="fa-regular fa-file-lines"></i> ページサイズを統一する</span>
+          </label>
+        </div>
+        <div class="fg hidden" id="uniform-size-fields" style="background:rgba(0,0,0,.2); padding:10px; border-radius:6px; margin-top:6px;">
+          <select id="uniform-size-sel" style="width:100%; padding:5px; border-radius:4px; font-size:11px; background:#111a26; color:#c8d8ea; border:1px solid rgba(255,255,255,.1); outline:none;">
+            <option value="A4">A4 (210 × 297 mm)</option>
+            <option value="A3">A3 (297 × 420 mm)</option>
+            <option value="B4">B4 (JIS) (257 × 364 mm)</option>
+            <option value="B5">B5 (JIS) (182 × 257 mm)</option>
+            <option value="Letter">Letter (8.5 × 11 inch)</option>
+          </select>
+        </div>
+        <div class="fg-toggle" title="各ページを白黒(グレースケール)にして保存します (※画像化されます)" style="margin-top:8px;">
+          <label class="tg-lbl">
+            <input type="checkbox" id="meta-grayscale" hidden>
+            <div class="tg-track"><div class="tg-thumb"></div></div>
+            <span><i class="fa-solid fa-circle-half-stroke"></i> 白黒で保存する</span>
+          </label>
+        </div>
+        <div class="fg-toggle" title="出力されるPDFの各ページにページ番号を挿入します" style="margin-top:8px;">
+          <label class="tg-lbl">
+            <input type="checkbox" id="meta-pageno" hidden>
+            <div class="tg-track"><div class="tg-thumb"></div></div>
+            <span><i class="fa-solid fa-list-ol" style="color:#d1d5db;"></i> ページ番号を挿入する</span>
+          </label>
+        </div>
+        <div class="fg hidden" id="pageno-fields" style="background:rgba(0,0,0,.2); padding:10px; border-radius:6px; margin-top:6px;">
+          <label style="font-size:10.5px; color:#dde6f0; display:block; margin-bottom:6px;">配置位置</label>
+          <select id="pageno-pos" style="width:100%; padding:5px; margin-bottom:8px; border-radius:4px; font-size:11px; background:#111a26; color:#c8d8ea; border:1px solid rgba(255,255,255,.1);">
+            <option value="bottom-center">下部中央</option>
+            <option value="bottom-right">下部右側</option>
+            <option value="top-center">上部中央</option>
+            <option value="top-right">上部右側</option>
+          </select>
+          <label style="font-size:10.5px; color:#dde6f0; display:block; margin-bottom:6px;">フォーマット</label>
+          <select id="pageno-fmt" style="width:100%; padding:5px; border-radius:4px; font-size:11px; background:#111a26; color:#c8d8ea; border:1px solid rgba(255,255,255,.1);">
+            <option value="1">1, 2, 3...</option>
+            <option value="- 1 -">- 1 -, - 2 -...</option>
+            <option value="1 / N">1 / 10 (総ページ数付)</option>
+          </select>
+          <label style="font-size:10.5px; color:#dde6f0; display:block; margin:8px 0 6px;">開始番号</label>
+          <input type="number" id="pageno-start" value="1" min="1" style="width:100%; padding:5px; border-radius:4px; font-size:11px; background:#111a26; color:#c8d8ea; border:1px solid rgba(255,255,255,.1); outline:none;">
+        </div>
+
+        <div class="fg-toggle" title="各ページを画像化して圧縮します" style="margin-top:8px;">
+          <label class="tg-lbl">
+            <input type="checkbox" id="meta-compress" hidden>
+            <div class="tg-track"><div class="tg-thumb"></div></div>
+            <span><i class="fa-solid fa-file-zipper"></i> 圧縮を有効にする</span>
+          </label>
+        </div>
+        <div class="fg hidden" id="compress-fields">
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:11px; color:#dde6f0;">
+            <span>画質設定 (Quality)</span>
+            <span id="compress-val">0.6</span>
+          </div>
+          <input type="range" id="compress-slider" min="0.1" max="1.0" step="0.1" value="0.6" style="width:100%; accent-color:var(--c-acc); cursor:pointer;">
+          <p style="font-size:10.5px; color:#94a3b8; margin-top:6px; line-height:1.4;">
+            ※画像化されるため文字選択はできなくなりますが、容量を劇的に削減できます。
+          </p>
+        </div>
+
+        <div class="fg-toggle" title="ペイントで描画した内容をPDFに含めて保存します" style="margin-top:8px;">
+          <label class="tg-lbl">
+            <input type="checkbox" id="meta-include-paint" checked hidden>
+            <div class="tg-track"><div class="tg-thumb"></div></div>
+            <span><i class="fa-solid fa-paintbrush" style="color:#d1d5db;"></i> ペイント描画を含める</span>
+          </label>
+        </div>
+        <div class="fg-toggle" title="個人情報や指定キーワードを黒塗りします" style="margin-top:8px;">
+          <label class="tg-lbl">
+            <input type="checkbox" id="meta-masking" hidden>
+            <div class="tg-track"><div class="tg-thumb"></div></div>
+            <span><i class="fa-solid fa-highlighter" style="color:#d1d5db;"></i> マスキング（黒塗り）</span>
+          </label>
+        </div>
+        <div class="fg hidden" id="masking-fields" style="background:rgba(0,0,0,.2); padding:10px; border-radius:6px; margin-top:6px;">
+          <label style="font-size:10.5px; color:#dde6f0; display:block; margin-bottom:6px;">自動検出パターン</label>
+          <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+            <label class="tg-lbl"><input type="checkbox" id="mask-phone" checked style="accent-color:var(--c-acc);"><span>電話番号</span></label>
+            <label class="tg-lbl"><input type="checkbox" id="mask-mynum" checked style="accent-color:var(--c-acc);"><span>マイナンバー</span></label>
+            <label class="tg-lbl"><input type="checkbox" id="mask-email" checked style="accent-color:var(--c-acc);"><span>Email</span></label>
+          </div>
+          <label style="font-size:10.5px; color:#dde6f0; display:block; margin-bottom:6px;">カスタムキーワード (カンマ区切り)</label>
+          <input type="text" id="mask-custom" placeholder="例: 極秘, 社外秘">
+          <p style="font-size:10.5px; color:#f87171; margin-top:6px; line-height:1.4;">
+            ※完全にテキストを削除するには「圧縮」または「白黒」の併用を推奨します。（画像化でテキスト層が消失します）
+          </p>
+        </div>
+      </div>
+
+    </div><!-- /#sbp-settings -->
+
+  </aside>
+
+  <!-- ===================== WORKSPACE ================= -->
+  <main id="workspace">
+    <!-- Drop zone (empty state) -->
+    <div id="drop-zone" tabindex="0" role="button" aria-label="ファイルを追加">
+      <div class="dz-box">
+        <div class="dz-icon-wrap">
+          <i class="fa-solid fa-cloud-arrow-up"></i>
+        </div>
+        <h2 class="dz-title">ドロップ または クリックしてファイルを追加</h2>
+        <p class="dz-desc">PDF・画像・3Dデータに対応しています。<br>クリップボードからの <kbd>Ctrl</kbd> + <kbd>V</kbd> ペーストも可能です。</p>
+        <div class="dz-tags">
+          <span>PDF</span>
+          <span>JPG / PNG</span>
+          <span>GLB / OBJ / STL</span>
+        </div>
+      </div>
+    </div>
+    <!-- Page container (filled state) -->
+    <div id="page-container" class="vt"></div>
+  </main>
+
+  <!-- ===================== STATUS BAR ================ -->
+  <footer id="statusbar">
+    <div class="st-l">
+      <span id="st-pages"><i class="fa-solid fa-file"></i>0 ページ</span>
+      <span id="st-files"><i class="fa-solid fa-folder"></i>0 ファイル</span>
+    </div>
+    <div id="st-prog">
+      <div class="prog-bar"><div class="prog-fill" id="prog-fill"></div></div>
+      <span id="prog-txt">処理中...</span>
+    </div>
+    <div class="st-r">
+      <span id="st-sel"><i class="fa-regular fa-square-check"></i>0 選択中</span>
+    </div>
+  </footer>
+
+</div><!-- #app -->
+
+<!-- ===================== VIEWER MODAL =============== -->
+<div id="viewer-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="ページビューワー">
+  <div id="viewer-modal">
+    <div id="viewer-hd">
+      <div class="vhd-info">
+        <i class="fa-regular fa-file-pdf vhd-icon"></i>
+        <span id="vhd-pnum"></span>
+        <span class="vhd-sep"></span>
+        <span id="vhd-fname"></span>
+        <span id="vhd-status-badges" class="vhd-status-badges"></span>
+      </div>
+
+      <div class="vhd-actions">
+        <button class="vhd-btn info" id="vhd-props" title="文書プロパティ"><i class="fa-solid fa-circle-info"></i></button>
+        <button class="vhd-btn ocr"  id="vhd-ocr"   title="このページをOCR / テキスト抽出"><i class="fa-solid fa-language"></i></button>
+        <button class="vhd-btn" id="vhd-dl-img" title="現在のページを画像(PNG)として保存"><i class="fa-solid fa-image"></i></button>
+        <button class="vhd-btn" id="vhd-qr" title="QRコードを自動検出・デコード"><i class="fa-solid fa-qrcode"></i></button>
+        <div class="vhd-divider"></div>
+        <button class="vhd-btn" id="vhd-crop" title="余白トリミング（クロップ）"><i class="fa-solid fa-crop-simple"></i></button>
+        <button class="vhd-btn" id="vhd-scanfix" title="スキャン補正（微細回転・台形補正）"><i class="fa-solid fa-object-ungroup"></i></button>
+        <button class="vhd-btn" id="vhd-adjust" title="画像調整（明るさ・コントラスト等）"><i class="fa-solid fa-sliders"></i></button>
+        <button class="vhd-btn" id="vhd-paint" title="ペイント（描画・注釈）"><i class="fa-solid fa-paintbrush"></i></button>
+        <button class="vhd-btn" id="vhd-rot-l" title="左回転"><i class="fa-solid fa-rotate-left"></i></button>
+        <button class="vhd-btn" id="vhd-rot-r" title="右回転"><i class="fa-solid fa-rotate-right"></i></button>
+        <button class="vhd-btn" id="vhd-flip-h" title="左右反転"><i class="fa-solid fa-left-right"></i><span class="vhd-flip-label">反転H</span></button>
+        <button class="vhd-btn" id="vhd-flip-v" title="上下反転"><i class="fa-solid fa-up-down"></i><span class="vhd-flip-label">反転V</span></button>
+        <div class="vhd-divider"></div>
+        <button class="vhd-btn" id="vhd-fit-100" title="100% (実寸) 表示"><i class="fa-solid fa-1"></i></button>
+        <button class="vhd-btn" id="vhd-fit-w" title="ウィンドウ幅に合わせる"><i class="fa-solid fa-left-right"></i></button>
+        <button class="vhd-btn" id="vhd-fit-h" title="ウィンドウ高さに合わせる"><i class="fa-solid fa-up-down"></i></button>
+        <div class="vhd-zoom-ctrl" id="vhd-zoom-ctrl" title="表示サイズを調整 (25%〜400%)">
+          <i class="fa-solid fa-magnifying-glass-minus"></i>
+          <input type="range" id="vhd-zoom-slider" min="25" max="400" value="100" step="5">
+          <i class="fa-solid fa-magnifying-glass-plus"></i>
+          <span id="vhd-zoom-val">100%</span>
+        </div>
+        <div class="vhd-divider"></div>
+        <button class="vhd-btn active" id="vhd-view-single" title="単一表示 [1]"><i class="fa-regular fa-file"></i></button>
+        <button class="vhd-btn" id="vhd-view-double" title="見開き表示 [2]"><i class="fa-solid fa-book-open"></i></button>
+        <button class="vhd-btn" id="vhd-view-scroll" title="連続表示 (スクロール) [3]"><i class="fa-solid fa-scroll"></i></button>
+        <div class="vhd-divider"></div>
+        <button class="vhd-btn close" id="vhd-close" title="閉じる [Esc]"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+    </div>
+    <div id="viewer-body">
+      <button class="vnav" id="vnav-prev" title="前のページ [←]" disabled>
+        <i class="fa-solid fa-chevron-left"></i>
+      </button>
+      <div id="viewer-canvas-wrap">
+        <!-- タブバー -->
+        <div id="viewer-tab-bar">
+          <button class="vtab active" id="vtab-render" title="ページ表示">
+            <i class="fa-solid fa-eye"></i><span>表示</span>
+          </button>
+          <button class="vtab" id="vtab-text" title="テキスト抽出・コピー">
+            <i class="fa-solid fa-font"></i><span>テキスト</span>
+          </button>
+          <button class="vtab hidden" id="vtab-3d" title="3Dモデル表示">
+            <i class="fa-solid fa-cube"></i><span>3Dビュー</span>
+          </button>
+        </div>
+
+        <!-- 表示パネル -->
+          <div id="viewer-render-panel">
+            <!-- クロップ適用中バッジ -->
+            <div id="viewer-crop-badge" class="hidden">
+              <i class="fa-solid fa-crop-simple"></i>クロップ適用中
+            </div>
+            <!-- 画像調整UIパネル（viewer-render-panel直属・絶対配置） -->
+            <div id="viewer-adjust-ui" class="hidden">
+              <div class="adj-header">
+                <div class="adj-title"><i class="fa-solid fa-sliders"></i>画像調整</div>
+                <button class="adj-close-btn" title="閉じる"><i class="fa-solid fa-xmark"></i></button>
+              </div>
+              <div class="adj-body">
+                <div class="adj-fg">
+                  <div class="adj-lbl">明るさ <span id="adj-val-br">100%</span></div>
+                  <input type="range" id="adj-br" min="0" max="200" value="100" class="adj-slider">
+                </div>
+                <div class="adj-fg">
+                  <div class="adj-lbl">コントラスト <span id="adj-val-ct">100%</span></div>
+                  <input type="range" id="adj-ct" min="0" max="200" value="100" class="adj-slider">
+                </div>
+                <div class="adj-fg">
+                  <div class="adj-lbl">彩度 <span id="adj-val-sa">100%</span></div>
+                  <input type="range" id="adj-sa" min="0" max="200" value="100" class="adj-slider">
+                </div>
+                <div class="adj-fg">
+                  <div class="adj-lbl">ぼかし <span id="adj-val-bl">0px</span></div>
+                  <input type="range" id="adj-bl" min="0" max="20" value="0" class="adj-slider">
+                </div>
+                <div class="adj-actions" style="justify-content:space-between;">
+                  <button class="btn btn-gh" id="adj-reset"><i class="fa-solid fa-rotate-left"></i>リセット</button>
+                  <button class="btn btn-gh" id="adj-cancel">キャンセル</button>
+                  <button class="btn btn-pri" id="adj-apply"><i class="fa-solid fa-check"></i>適用</button>
+                </div>
+              </div>
+            </div>
+            <!-- ペイントUIパネル（viewer-render-panel直属・絶対配置） -->
+            <div id="viewer-paint-ui" class="hidden">
+              <div class="adj-header">
+                <div class="adj-title"><i class="fa-solid fa-paintbrush"></i>ペイント</div>
+                <button class="adj-close-btn" title="閉じる"><i class="fa-solid fa-xmark"></i></button>
+              </div>
+              <div class="adj-body">
+                <!-- ツール選択 -->
+                <div class="adj-fg">
+                  <div class="adj-lbl">ツール <span id="paint-tool-hint" style="font-size:9.5px;color:var(--c-acc);font-weight:500;font-family:var(--font-sa);"></span></div>
+                  <div class="paint-tools">
+                    <button class="paint-tool-btn active" data-tool="pen" title="ペン（なめらかな線）"><i class="fa-solid fa-pen"></i></button>
+                    <button class="paint-tool-btn" data-tool="fill-pen" title="塗りつぶしペン：ドラッグした経路を塗りつぶし&#10;描画中はハイライトで経路・太さを視覚化"><i class="fa-solid fa-paintbrush"></i></button>
+                    <button class="paint-tool-btn" data-tool="eraser" title="消しゴム：描画レイヤーを消去&#10;消去範囲をカーソルリングで可視化"><i class="fa-solid fa-eraser"></i></button>
+                    <span class="paint-tools-sep"></span>
+                    <button class="paint-tool-btn" data-tool="line" title="直線"><i class="fa-solid fa-minus"></i></button>
+                    <button class="paint-tool-btn" data-tool="rect" title="矩形（枠線のみ）"><i class="fa-regular fa-square"></i></button>
+                    <button class="paint-tool-btn" data-tool="fill-rect" title="矩形（塗りつぶし）：指定色でベタ塗り矩形"><i class="fa-solid fa-square"></i></button>
+                    <button class="paint-tool-btn" data-tool="fill-ellipse" title="楕円（塗りつぶし）：指定色でベタ塗り楕円"><i class="fa-solid fa-circle"></i></button>
+                    <button class="paint-tool-btn" data-tool="arrow" title="矢印"><i class="fa-solid fa-arrow-right"></i></button>
+                    <span class="paint-tools-sep"></span>
+                    <button class="paint-tool-btn" data-tool="text" title="テキスト"><i class="fa-solid fa-t"></i></button>
+                    <button class="paint-tool-btn" data-tool="stamp" title="定型スタンプ"><i class="fa-solid fa-stamp"></i></button>
+                  </div>
+                </div>
+                <!-- カラーパレット -->
+                <div class="adj-fg">
+                  <div class="adj-lbl">カラー</div>
+                  <div class="paint-colors">
+                    <button class="paint-color-btn active" data-color="#ef4444" style="background:#ef4444;" title="赤"></button>
+                    <button class="paint-color-btn" data-color="#f97316" style="background:#f97316;" title="橙"></button>
+                    <button class="paint-color-btn" data-color="#eab308" style="background:#eab308;" title="黄"></button>
+                    <button class="paint-color-btn" data-color="#22c55e" style="background:#22c55e;" title="緑"></button>
+                    <button class="paint-color-btn" data-color="#3b82f6" style="background:#3b82f6;" title="青"></button>
+                    <button class="paint-color-btn" data-color="#8b5cf6" style="background:#8b5cf6;" title="紫"></button>
+                    <button class="paint-color-btn" data-color="#1e293b" style="background:#1e293b;" title="黒"></button>
+                    <button class="paint-color-btn" data-color="#ffffff" style="background:#ffffff;border:1.5px solid #cbd5e1;" title="白"></button>
+                    <input type="color" id="paint-color-custom" class="paint-color-custom" value="#ef4444" title="カスタムカラー">
+                  </div>
+                </div>
+                <!-- 線の太さ -->
+                <div class="adj-fg">
+                  <div class="adj-lbl">太さ <span id="paint-size-val">3px</span></div>
+                  <input type="range" id="paint-size" min="1" max="40" value="3" class="adj-slider">
+                </div>
+                <!-- 不透明度 -->
+                <div class="adj-fg">
+                  <div class="adj-lbl">不透明度 <span id="paint-opacity-val">100%</span></div>
+                  <input type="range" id="paint-opacity" min="10" max="100" value="100" class="adj-slider">
+                </div>
+                <!-- テキスト入力（テキストツール選択時のみ表示） -->
+                <div class="adj-fg hidden" id="paint-text-fg">
+                  <div class="adj-lbl">テキスト</div>
+                  <input type="text" id="paint-text-input" placeholder="入力してクリックで配置" style="width:100%;padding:6px 8px;border:1px solid var(--c-bd);border-radius:6px;font-size:12px;">
+                  <div style="display:flex; gap:6px; margin-top:6px;">
+                    <select id="paint-text-font" style="flex:1; padding:4px; font-size:11px; border-radius:4px; border:1px solid var(--c-bd); outline:none;">
+                      <option value="sans-serif">ゴシック (Sans-serif)</option>
+                      <option value="serif">明朝 (Serif)</option>
+                      <option value="monospace">等幅 (Monospace)</option>
+                    </select>
+                    <input type="number" id="paint-text-size" value="24" min="8" max="120" style="width:60px; padding:4px; font-size:11px; border-radius:4px; border:1px solid var(--c-bd); outline:none;" title="フォントサイズ (px)">
+                  </div>
+                </div>
+                <!-- スタンプ選択（スタンプツール選択時のみ表示） -->
+                <div class="adj-fg hidden" id="paint-stamp-fg">
+                  <div class="adj-lbl">スタンプ</div>
+                  <select id="paint-stamp-sel" style="width:100%; padding:6px; font-size:12px; border-radius:4px; border:1px solid var(--c-bd); outline:none;">
+                    <option value="✔">✔ (チェック)</option>
+                    <option value="✘">✘ (バツ)</option>
+                    <option value="要確認">要確認</option>
+                    <option value="CONFIDENTIAL">CONFIDENTIAL</option>
+                    <option value="確認済">確認済</option>
+                    <option value="承認">承認</option>
+                    <option value="注意">注意</option>
+                  </select>
+                </div>
+                <!-- 操作ボタン -->
+                <div class="adj-actions" style="justify-content:space-between;">
+                  <button class="btn btn-gh" id="paint-undo-btn" title="直前の描画を取り消し"><i class="fa-solid fa-rotate-left"></i>戻す</button>
+                  <button class="btn btn-gh" id="paint-clear-btn" title="すべての描画を消去"><i class="fa-solid fa-trash"></i>全消去</button>
+                  <button class="btn btn-pri" id="paint-apply-btn" title="描画をページに焼き込む"><i class="fa-solid fa-check"></i>適用</button>
+                </div>
+              </div>
+            </div>
+            <!-- スキャン補正UIパネル（viewer-render-panel直属・絶対配置） -->
+            <div id="viewer-scanfix-ui" class="hidden">
+              <div class="adj-header">
+                <div class="adj-title"><i class="fa-solid fa-object-ungroup"></i>スキャン補正</div>
+                <button class="adj-close-btn" title="閉じる"><i class="fa-solid fa-xmark"></i></button>
+              </div>
+              <div class="adj-body">
+
+                <!-- ── 自動傾き検出 ── -->
+                <div class="sf-auto-section">
+                  <button class="sf-auto-btn" id="sf-auto-angle"
+                    title="Sobelエッジ解析で傾きを自動検出し、補正値を設定します">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    <span>自動傾き検出</span>
+                  </button>
+                  <!-- 検出結果パネル（検出後に表示） -->
+                  <div id="sf-detect-panel" class="sf-detect-panel hidden">
+                    <div class="sf-detect-vis">
+                      <canvas id="sf-tilt-canvas" width="248" height="72"></canvas>
+                    </div>
+                    <div class="sf-detect-metrics">
+                      <div class="sf-metric">
+                        <span class="sf-metric-lbl"><i class="fa-solid fa-magnifying-glass"></i>検出傾き</span>
+                        <span class="sf-metric-val sf-metric-raw" id="sf-raw-angle">—</span>
+                      </div>
+                      <div class="sf-metric-sep"><i class="fa-solid fa-arrow-right"></i></div>
+                      <div class="sf-metric">
+                        <span class="sf-metric-lbl"><i class="fa-solid fa-rotate"></i>補正量</span>
+                        <span class="sf-metric-val sf-metric-corr" id="sf-corr-angle">—</span>
+                      </div>
+                    </div>
+                    <div class="sf-detect-dir" id="sf-detect-dir"></div>
+                  </div>
+                </div>
+
+                <!-- ── 微細回転スライダー ── -->
+                <div class="adj-fg">
+                  <div class="adj-lbl">微細回転 <span id="sf-val-rot">0.0°</span></div>
+                  <input type="range" id="sf-rot" min="-45" max="45" value="0" step="0.1" class="adj-slider">
+                </div>
+
+                <!-- ── 出力設定 ── -->
+                <div class="adj-fg" style="margin-top:4px;">
+                  <div class="adj-lbl">出力比率</div>
+                  <select id="sf-ratio" style="padding:4px;font-size:11.5px;border-radius:4px;border:1px solid var(--c-bd);outline:none;">
+                    <option value="free">自由比率 (そのまま)</option>
+                    <option value="1.4141">A判/B判 縦 (1 : 1.414)</option>
+                    <option value="0.7071">A判/B判 横 (1.414 : 1)</option>
+                  </select>
+                </div>
+                <div class="adj-fg" style="margin-top:4px;">
+                  <div class="adj-lbl">背景の塗りつぶし</div>
+                  <select id="sf-bg-color" style="padding:4px;font-size:11.5px;border-radius:4px;border:1px solid var(--c-bd);outline:none;">
+                    <option value="white">白 (White)</option>
+                    <option value="black">黒 (Black)</option>
+                    <option value="transparent">透明 (PNG保存)</option>
+                  </select>
+                </div>
+                <p style="font-size:10.5px;color:var(--c-t3);line-height:1.4;margin-top:4px;">
+                  スライダーで傾きを補正し、4つのハンドルを文書の角に合わせて切り抜きます。
+                </p>
+                <div class="adj-actions" style="justify-content:space-between;">
+                  <button class="btn btn-gh" id="sf-reset" title="初期化"><i class="fa-solid fa-rotate-left"></i></button>
+                  <button class="btn btn-gh" id="sf-cancel">キャンセル</button>
+                  <button class="btn btn-pri" id="sf-apply"><i class="fa-solid fa-check"></i>適用</button>
+                </div>
+              </div>
+            </div>
+            <div id="viewer-page-wrap">
+              <!-- 比較表示用ナビゲーション -->
+              <div id="compare-nav-left" class="compare-nav hidden">
+                <button class="vnav-mini" id="vnav-cmp-l-prev" title="前のページ"><i class="fa-solid fa-chevron-left"></i></button>
+                <span class="cmp-pnum" id="cmp-pnum-l"></span>
+                <button class="vnav-mini" id="vnav-cmp-l-next" title="次のページ"><i class="fa-solid fa-chevron-right"></i></button>
+              </div>
+              <div id="compare-nav-right" class="compare-nav hidden">
+                <button class="vnav-mini" id="vnav-cmp-r-prev" title="前のページ"><i class="fa-solid fa-chevron-left"></i></button>
+                <span class="cmp-pnum" id="cmp-pnum-r"></span>
+                <button class="vnav-mini" id="vnav-cmp-r-next" title="次のページ"><i class="fa-solid fa-chevron-right"></i></button>
+              </div>
+              <canvas id="viewer-canvas"></canvas>
+              <canvas id="viewer-canvas-right" style="display: none;"></canvas>
+              <!-- ペイント用オーバーレイキャンバス -->
+              <canvas id="viewer-paint-canvas" style="display:none; position:absolute; top:0; left:0; cursor:crosshair;"></canvas>
+              <!-- スキャン補正用オーバーレイキャンバス -->
+              <div id="viewer-scanfix-overlay" class="hidden">
+                <canvas id="sf-canvas" style="display:block; box-shadow:0 8px 48px rgba(0,0,0,.55);"></canvas>
+                <svg id="sf-svg" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;">
+                  <polygon id="sf-poly" points="" fill="rgba(37,99,235,0.15)" stroke="#2563eb" stroke-width="2" stroke-dasharray="4 4"/>
+                </svg>
+                <div class="sf-handle" data-idx="0" title="左上"></div>
+                <div class="sf-handle" data-idx="1" title="右上"></div>
+                <div class="sf-handle" data-idx="2" title="右下"></div>
+                <div class="sf-handle" data-idx="3" title="左下"></div>
+              </div>
+              <!-- クロップUIオーバーレイ -->
+              <div id="viewer-crop-ui" class="hidden">
+              <div class="crop-overlay-bg top"></div>
+              <div class="crop-overlay-bg bottom"></div>
+              <div class="crop-overlay-bg left"></div>
+              <div class="crop-overlay-bg right"></div>
+              <div class="crop-box" id="crop-box">
+                <div class="crop-handle nw"></div><div class="crop-handle n"></div><div class="crop-handle ne"></div>
+                <div class="crop-handle w"></div><div class="crop-handle e"></div>
+                <div class="crop-handle sw"></div><div class="crop-handle s"></div><div class="crop-handle se"></div>
+                <div class="crop-toolbar">
+                  <span style="font-size:11px;color:var(--c-t2);">範囲をドラッグ</span>
+                  <select id="crop-ratio" class="crop-ratio-sel">
+                    <option value="free">自由比率</option>
+                    <option value="1.4141">A判/B判 (1:1.414)</option>
+                    <option value="0.7071">A判/B判 縦 (1.414:1)</option>
+                    <option value="1.3333">4:3 (画面横)</option>
+                    <option value="0.75">3:4 (画面縦)</option>
+                    <option value="1.7778">16:9 (ワイド横)</option>
+                    <option value="1">1:1 (正方形)</option>
+                  </select>
+                  <button class="btn btn-gh" id="crop-cancel">キャンセル</button>
+                  <button class="btn btn-gh" id="crop-reset"><i class="fa-solid fa-rotate-left"></i> リセット</button>
+                  <button class="btn btn-pri" id="crop-apply"><i class="fa-solid fa-check"></i> 適用</button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+          <div id="viewer-ld"><i class="fa-solid fa-spinner"></i><span>読み込み中...</span></div>
+        </div>
+
+        <!-- テキストパネル -->
+        <div id="viewer-text-panel" class="hidden">
+          <!-- 左側：プレビューキャンバス -->
+          <div class="vt-prev-pane" id="vt-prev-wrap">
+            <canvas id="vt-prev-canvas" style="display:none;"></canvas>
+            <div id="vt-prev-ld">
+              <i class="fa-solid fa-spinner"></i>
+              <span>読み込み中...</span>
+            </div>
+          </div>
+          <!-- 右側：テキストエリア -->
+          <div class="vt-text-pane">
+            <div class="vt-text-hd">
+              <span id="viewer-text-src-badge" class="vt-src-badge"></span>
+              <div class="vta-btns">
+                <!-- 文字化け修正UI (自動検出時に表示) -->
+                <div id="viewer-mojibake-wrap" class="hidden" title="文字化けしている場合、エンコーディングを指定して復元を試みます。&#10;※直らない場合はOCR機能をご利用ください。">
+                  <select id="viewer-mojibake-enc">
+                    <option value="shift-jis">Shift_JIS</option>
+                    <option value="euc-jp">EUC-JP</option>
+                  </select>
+                  <button class="btn btn-gh" id="viewer-mojibake-btn">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>文字化け修正
+                  </button>
+                </div>
+                <button class="btn btn-gh" id="viewer-trans-deepl" title="選択テキスト(または全体)をDeepLで翻訳">
+                  <i class="fa-solid fa-language"></i>DeepL
+                </button>
+                <button class="btn btn-gh" id="viewer-trans-google" title="選択テキスト(または全体)をGoogle翻訳">
+                  <i class="fa-brands fa-google"></i>Google
+                </button>
+                <button class="btn btn-gh btn-icon" id="viewer-trans-settings" title="翻訳連携設定">
+                  <i class="fa-solid fa-gear"></i>
+                </button>
+              </div>
+            </div>
+            <textarea id="viewer-text-area" spellcheck="false"
+              placeholder="テキストを読み込んでいます..."></textarea>
+            <div id="viewer-text-actions">
+              <div style="flex:1"></div>
+              <button class="btn btn-ok" id="viewer-text-save-btn" title="編集したテキストを保存">
+                <i class="fa-solid fa-floppy-disk"></i>保存
+              </button>
+              <button class="btn btn-pri" id="viewer-text-copy-btn">
+                <i class="fa-solid fa-copy"></i>コピー
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3Dビューパネル -->
+        <div id="viewer-3d-panel" class="hidden">
+          <canvas id="viewer-3d-canvas"></canvas>
+          <!-- PDF埋め込み3D情報パネル -->
+          <div id="pdf-3d-info" class="hidden">
+            <div class="p3d-icon"><i class="fa-solid fa-cube"></i></div>
+            <div class="p3d-title">PDFに3Dデータが埋め込まれています</div>
+            <div class="p3d-meta" id="pdf-3d-meta"></div>
+            <div class="p3d-compat" id="pdf-3d-compat"></div>
+            <div class="p3d-actions">
+              <button class="btn btn-gh" id="pdf-3d-dl" style="display:none">
+                <i class="fa-solid fa-download"></i>3Dデータをダウンロード
+              </button>
+            </div>
+          </div>
+          <div id="viewer-3d-toolbar">
+            <span id="viewer-3d-info"><i class="fa-solid fa-cube"></i><span id="viewer-3d-filename"></span></span>
+            <div class="v3d-btns">
+              <button class="btn btn-gh btn-icon" id="v3d-wireframe" title="ワイヤーフレーム表示切替">
+                <i class="fa-solid fa-vector-square"></i>
+              </button>
+              <button class="btn btn-gh btn-icon active" id="v3d-grid" title="グリッド表示切替">
+                <i class="fa-solid fa-border-all"></i>
+              </button>
+              <button class="btn btn-gh" id="v3d-reset" title="視点をリセット">
+                <i class="fa-solid fa-arrows-to-circle"></i>リセット
+              </button>
+            </div>
+          </div>
+          <div id="viewer-3d-ld" class="hidden">
+            <i class="fa-solid fa-spinner"></i><span>3Dモデルを読み込み中...</span>
+          </div>
+          <div id="viewer-3d-err" class="hidden">
+            <i class="fa-solid fa-triangle-exclamation"></i><span>3Dデータの読み込みに失敗しました</span>
+          </div>
+        </div>
+      </div>
+      <button class="vnav" id="vnav-next" title="次のページ [→]" disabled>
+        <i class="fa-solid fa-chevron-right"></i>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== OCR MODAL ================= -->
+<div id="ocr-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="OCR抽出テキスト">
+  <div id="ocr-modal">
+
+    <!-- ヘッダー：タイトル / ページナビゲーション / 閉じる -->
+    <div class="ocr-hd">
+      <div class="ocr-title">
+        <i class="fa-solid fa-language"></i>テキスト抽出 / OCR
+      </div>
+      <div class="ocr-hd-nav">
+        <button class="ocr-nav-btn" id="ocr-nav-prev" disabled title="前のページ">
+          <i class="fa-solid fa-chevron-left"></i>
+        </button>
+        <span id="ocr-pager" class="ocr-pager">−</span>
+        <button class="ocr-nav-btn" id="ocr-nav-next" disabled title="次のページ">
+          <i class="fa-solid fa-chevron-right"></i>
+        </button>
+      </div>
+      <button class="vhd-btn close" id="ocr-close" title="閉じる [Esc]">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <!-- ボディ：左=プレビュー / 右=テキスト -->
+    <div class="ocr-body">
+
+      <!-- 左ペイン：ページプレビュー -->
+      <div class="ocr-prev-pane" id="ocr-prev-wrap">
+        <canvas id="ocr-prev-canvas" style="display:none;"></canvas>
+        <div id="ocr-prev-ld">
+          <i class="fa-solid fa-spinner"></i>
+          <span>読み込み中...</span>
+        </div>
+        <!-- ページソース種別バッジ -->
+        <div id="ocr-src-badge" class="ocr-src-badge hidden"></div>
+      </div>
+
+      <!-- 右ペイン：テキスト出力 -->
+      <div class="ocr-text-pane">
+        <!-- フォント設定バー -->
+        <div class="ocr-font-bar">
+          <i class="fa-solid fa-font" title="フォント"></i>
+          <select id="ocr-font-sel" title="表示フォントを選択">
+            <option value="'DM Sans',system-ui,sans-serif">DM Sans（デフォルト）</option>
+            <option value="'Noto Sans JP','Noto Sans',sans-serif">Noto Sans JP</option>
+            <option value="'Meiryo','メイリオ',sans-serif">メイリオ</option>
+            <option value="'MS PGothic','ＭＳ Ｐゴシック',sans-serif">MS Pゴシック</option>
+            <option value="'MS Gothic','ＭＳ ゴシック',monospace">MS ゴシック</option>
+            <option value="'Courier New',Courier,monospace">Courier New（等幅）</option>
+          </select>
+          <div class="ocr-font-size-ctrl">
+            <i class="fa-solid fa-text-height" title="フォントサイズ"></i>
+            <input type="range" id="ocr-font-size" min="10" max="24" value="13" step="1">
+            <span id="ocr-font-size-val">13px</span>
+          </div>
+          <div class="ocr-force-sep"></div>
+          <button class="ocr-force-btn" id="ocr-force-toggle"
+            title="テキスト層があるページはテキスト抽出を優先します（クリックでON）">
+            <i class="fa-solid fa-font"></i>テキスト層優先
+          </button>
+        </div>
+        <div class="ocr-split-view">
+          <div class="ocr-editor-col">
+            <div class="ocr-col-hd">
+              <span><i class="fa-solid fa-file-lines"></i>抽出結果 (オリジナル)</span>
+              <button class="ocr-col-btn" id="btn-ocr-copy-orig" title="抽出結果をクリップボードにコピー">
+                <i class="fa-regular fa-copy"></i>
+              </button>
+            </div>
+            <div class="ocr-text-editor-wrap readonly">
+              <textarea id="ocr-orig-textarea" readonly spellcheck="false"
+                placeholder="ページを選択してOCRボタンを押すと&#10;抽出テキストがここに表示されます..."></textarea>
+            </div>
+          </div>
+          <div class="ocr-editor-col">
+            <div class="ocr-col-hd">
+              <span><i class="fa-solid fa-pen-to-square"></i>編集用テキスト</span>
+              <button class="ocr-col-btn" id="btn-ocr-revert" title="抽出結果で上書き (リセット)">
+                <i class="fa-solid fa-rotate-left"></i>
+              </button>
+            </div>
+            <div class="ocr-text-editor-wrap">
+              <div class="ocr-text-hl" id="ocr-text-hl" aria-hidden="true"></div>
+              <textarea id="ocr-textarea" spellcheck="false"
+                placeholder="ここでテキストを編集できます..."></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- フッター -->
+    <div class="ocr-ft">
+      <span id="ocr-status"></span>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-gh" id="btn-ocr-deepl" title="テキストをDeepLで翻訳">
+          <i class="fa-solid fa-language"></i>DeepL
+        </button>
+        <button class="btn btn-gh" id="btn-ocr-google" title="テキストをGoogle翻訳">
+          <i class="fa-brands fa-google"></i>Google
+        </button>
+        <div style="width:1px; background:var(--c-bd); margin:0 4px;"></div>
+        <button class="btn btn-ok" id="btn-ocr-save" title="編集したテキストを保存">
+          <i class="fa-solid fa-floppy-disk"></i>保存
+        </button>
+        <button class="btn btn-pri" id="btn-ocr-copy">
+          <i class="fa-solid fa-copy"></i>クリップボードにコピー
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===================== WELCOME SCREEN ================ -->
+<div id="welcome-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="PDF Studio Pro へようこそ">
+  <div id="welcome-modal">
+    
+    <!-- Header Hero -->
+    <div class="wc-hero">
+      <div class="wc-logo"><i class="fa-solid fa-layer-group"></i><span>PDF Studio</span></div>
+      <h1 class="wc-title">PDFの整理・編集をもっとスマートに。</h1>
+      <p class="wc-sub">ブラウザ上で完結する、安全で多機能なPDFエディタ。<br>ファイルはサーバーに送信されないため、機密文書も安心して扱えます。</p>
+    </div>
+
+    <div class="wc-body">
+      <!-- Session Restore (JS controlled) -->
+      <div id="wc-restore-section" style="display:none; margin-bottom: 8px;">
+        <div class="wc-restore-box">
+          <div class="wc-restore-header">
+            <i class="fa-solid fa-clock-rotate-left"></i>
+            <span>前回の作業が保存されています</span>
+          </div>
+          <p class="wc-restore-meta" id="wc-restore-meta"></p>
+          <div class="wc-restore-actions">
+            <button class="btn btn-ok" id="wc-btn-restore">
+              <i class="fa-solid fa-rotate-left"></i> 復元する
+            </button>
+            <button class="btn btn-gh" id="wc-btn-new">
+              <i class="fa-solid fa-file-circle-plus"></i> 新規作業として開始
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3 Steps -->
+      <div>
+        <h2 class="wc-section-title">使い方 (3ステップ)</h2>
+        <div class="wc-steps">
+          <div class="wc-step">
+            <div class="wc-step-icon"><i class="fa-solid fa-file-import"></i></div>
+            <span class="wc-step-text">1. ファイル追加</span>
+            <span class="wc-step-desc">PDF・画像・3Dモデルを<br>ドロップして読み込み</span>
+          </div>
+          <div class="wc-step">
+            <div class="wc-step-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+            <span class="wc-step-text">2. ページ編集</span>
+            <span class="wc-step-desc">整理・ペイント・補正<br>OCRによるテキスト抽出</span>
+          </div>
+          <div class="wc-step">
+            <div class="wc-step-icon"><i class="fa-solid fa-file-export"></i></div>
+            <span class="wc-step-text">3. 保存・出力</span>
+            <span class="wc-step-desc">A4統一や画像圧縮、<br>黒塗りなどの設定で保存</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Features -->
+      <div>
+        <h2 class="wc-section-title">主な機能</h2>
+        <div class="wc-features">
+          <div class="wc-feat">
+            <div class="wc-feat-icon" style="--fi-c:#2563eb"><i class="fa-solid fa-cubes"></i></div>
+            <div class="wc-feat-text">
+              <strong>多彩なフォーマット対応</strong>
+              <span>PDFや画像に加え、3Dモデル(GLB/OBJ/STL/PRC)の表示にも対応。<kbd>Ctrl</kbd>+<kbd>V</kbd> でクリップボードの画像も直接貼り付け可能です。</span>
+            </div>
+          </div>
+          <div class="wc-feat">
+            <div class="wc-feat-icon" style="--fi-c:#d97706"><i class="fa-solid fa-paintbrush"></i></div>
+            <div class="wc-feat-text">
+              <strong>直感的なページ編集・補正</strong>
+              <span>ペイント機能での注釈、スキャン画像の微細回転・台形補正、余白トリミング(クロップ)など、細やかな編集をブラウザで完結。</span>
+            </div>
+          </div>
+          <div class="wc-feat">
+            <div class="wc-feat-icon" style="--fi-c:#7c3aed"><i class="fa-solid fa-language"></i></div>
+            <div class="wc-feat-text">
+              <strong>高精度OCRと翻訳連携</strong>
+              <span>画像化されたPDFからテキストを自動抽出。抽出結果をDeepLやGoogle翻訳へワンクリックで連携し、編集内容をPDFに再埋め込みできます。</span>
+            </div>
+          </div>
+          <div class="wc-feat">
+            <div class="wc-feat-icon" style="--fi-c:#16a34a"><i class="fa-solid fa-shield-halved"></i></div>
+            <div class="wc-feat-text">
+              <strong>セキュアで軽量なPDF出力</strong>
+              <span>指定した個人情報の自動黒塗り(マスキング)や、画像圧縮による容量削減、全ページA4統一など、実務に即した出力設定を備えています。</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer Actions -->
+    <div class="wc-foot">
+      <div class="wc-shortcuts">
+        <span class="wc-key" title="全選択"><kbd>Ctrl</kbd>+<kbd>A</kbd></span>
+        <span class="wc-key" title="画像貼り付け"><kbd>Ctrl</kbd>+<kbd>V</kbd></span>
+        <span class="wc-key" title="削除"><kbd>Del</kbd></span>
+        <span class="wc-key" title="回転"><kbd>←</kbd> <kbd>→</kbd></span>
+      </div>
+      <div class="wc-foot-actions">
+        <label class="wc-skip">
+          <input type="checkbox" id="wc-no-show">
+          <span>次回から表示しない</span>
+        </label>
+        <button class="btn btn-pri wc-start" id="wc-start">
+          <i class="fa-solid fa-rocket"></i>始める
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===================== PROPS MODAL ================ -->
+<div id="props-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="文書プロパティ">
+  <div id="props-modal">
+    <div class="props-hd">
+      <div class="props-title">
+        <i class="fa-solid fa-circle-info"></i>文書プロパティ
+      </div>
+      <button class="vhd-btn close" id="props-close" title="閉じる">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div id="props-body">
+      <div class="props-loading">
+        <i class="fa-solid fa-spinner"></i><span>読み込み中...</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="file-input" accept=".pdf, .jpg, .jpeg, .png, .glb, .gltf, .obj, .stl, .prc" multiple hidden>
+
+<!-- ===================== TRANSLATION SETTINGS MODAL ================ -->
+<div id="trans-settings-overlay" class="hidden overlay-common" role="dialog" aria-modal="true">
+  <div class="modal-box" style="width: 480px;">
+    <div class="modal-hd">
+      <div class="modal-title"><i class="fa-solid fa-gear"></i>翻訳連携設定</div>
+      <button class="vhd-btn close" id="trans-close" title="閉じる"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body" style="padding: 20px;">
+      <p style="font-size:12px;color:var(--c-t2);margin-bottom:16px;">
+        URLテンプレートを設定します。<code style="background:#f1f5f9;padding:2px 4px;border-radius:3px;">{text}</code> の部分が抽出されたテキストに置き換わります。
+      </p>
+      <div class="fg">
+        <label style="font-size:11.5px;font-weight:600;display:block;margin-bottom:6px;">DeepL URL</label>
+        <input type="text" id="trans-url-deepl" value="https://www.deepl.com/ja/translator#ja/en/{text}" style="width:100%;padding:8px;border:1px solid var(--c-bd);border-radius:4px;">
+      </div>
+      <div class="fg" style="margin-top:16px;">
+        <label style="font-size:11.5px;font-weight:600;display:block;margin-bottom:6px;">Google翻訳 URL</label>
+        <input type="text" id="trans-url-google" value="https://translate.google.co.jp/?sl=auto&tl=ja&text={text}&op=translate" style="width:100%;padding:8px;border:1px solid var(--c-bd);border-radius:4px;">
+      </div>
+    </div>
+    <div class="modal-ft" style="padding: 12px 20px; border-top: 1px solid var(--c-bd); text-align: right; background: #f8fafc;">
+      <button class="btn btn-pri" id="trans-save">保存する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== QR RESULT MODAL ================ -->
+<div id="qr-overlay" class="hidden overlay-common" role="dialog" aria-modal="true">
+  <div class="modal-box" style="width: 400px;">
+    <div class="modal-hd">
+      <div class="modal-title"><i class="fa-solid fa-qrcode"></i>QRコード デコード結果</div>
+      <button class="vhd-btn close" id="qr-close" title="閉じる"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body" style="padding: 20px;">
+      <textarea id="qr-result-text" readonly style="width:100%; height:120px; padding:12px; font-family:var(--font-mo); font-size:13px; border:1px solid var(--c-bd); border-radius:6px; resize:none; outline:none; background:#f8fafc; color:var(--c-t1);"></textarea>
+      <div id="qr-action-wrap" style="margin-top: 12px; display: none; gap: 8px;">
+        <a id="qr-link-btn" href="#" target="_blank" class="btn btn-pri" style="flex:1; justify-content:center; text-decoration:none;"><i class="fa-solid fa-arrow-up-right-from-square"></i> リンクを開く</a>
+      </div>
+    </div>
+    <div class="modal-ft" style="padding: 12px 20px; border-top: 1px solid var(--c-bd); display:flex; justify-content:flex-end; background: #f8fafc;">
+      <button class="btn btn-gh" id="qr-copy-btn"><i class="fa-solid fa-copy"></i>コピー</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== PASSWORD MODAL ================ -->
+<div id="password-overlay" class="hidden overlay-common" role="dialog" aria-modal="true">
+  <div class="modal-box" style="width: 380px;">
+    <div class="modal-hd">
+      <div class="modal-title"><i class="fa-solid fa-lock"></i>パスワードで保護されたPDF</div>
+      <button class="vhd-btn close" id="password-close" title="キャンセル"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body" style="padding: 20px;">
+      <p style="font-size:12px;color:var(--c-t2);margin-bottom:16px;line-height:1.5;">
+        <span id="password-filename" style="font-weight:bold;color:var(--c-t1);"></span><br>を開くにはパスワードが必要です。
+      </p>
+      <div class="fg">
+        <input type="password" id="pdf-password-input" placeholder="パスワードを入力" style="width:100%;padding:10px;border:1px solid var(--c-bd);border-radius:4px;font-size:14px;">
+      </div>
+      <p id="password-error" class="hidden" style="color:var(--c-err); font-size:11.5px; margin-top:8px;">パスワードが正しくありません。</p>
+    </div>
+    <div class="modal-ft" style="padding: 12px 20px; border-top: 1px solid var(--c-bd); display:flex; justify-content:flex-end; gap:8px; background: #f8fafc;">
+      <button class="btn btn-gh" id="password-cancel">キャンセル</button>
+      <button class="btn btn-pri" id="password-submit"><i class="fa-solid fa-unlock"></i>開く</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== EXPORT SUGGEST MODAL ================ -->
+<div id="export-overlay" class="hidden overlay-common" role="dialog" aria-modal="true">
+  <div class="modal-box" style="width: 520px;">
+    <div class="modal-hd">
+      <div class="modal-title"><i class="fa-solid fa-file-export"></i>PDFとして保存</div>
+      <button class="vhd-btn close" id="export-close" title="閉じる"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body" style="padding: 20px;">
+      <div class="fg">
+        <label style="font-size:11.5px;font-weight:600;display:block;margin-bottom:6px;">ファイル名</label>
+        <input type="text" id="export-filename" placeholder="ファイル名を入力..." style="width:100%;padding:10px;border:1px solid var(--c-bd);border-radius:4px;font-size:14px;">
+      </div>
+      <div style="margin-top:20px;">
+        <label style="font-size:11.5px;font-weight:600;display:block;margin-bottom:8px;">ファイル名の候補 (クリックで適用)</label>
+        <div id="export-suggestions" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;"></div>
+        <button class="btn btn-gh" id="export-sugg-ocr-btn" style="width:100%;justify-content:center;">
+          <i class="fa-solid fa-language"></i> 1ページ目をOCR解析して候補を取得
+        </button>
+      </div>
+      <div id="export-summary-container" style="margin-top:20px; border-top:1px solid var(--c-bd); padding-top:16px;">
+        <label style="font-size:11.5px;font-weight:600;display:block;margin-bottom:8px;"><i class="fa-solid fa-clipboard-list"></i> 出力処理サマリー</label>
+        <div id="export-summary-content" class="export-summary-content"></div>
+      </div>
+    </div>
+    <div class="modal-ft" style="padding: 12px 20px; border-top: 1px solid var(--c-bd); display:flex; justify-content:flex-end; gap:8px; background: #f8fafc;">
+      <button class="btn btn-gh" id="export-cancel">キャンセル</button>
+      <button class="btn btn-ok" id="export-confirm"><i class="fa-solid fa-download"></i>保存する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================
+     External Libraries (loaded synchronously before JS)
+     ====================================================== -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+<script src="https://unpkg.com/tesseract.js@5.0.4/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<!-- Three.js 3D Viewer -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+
+<!-- ===== Feature 11: Context Menu ===== -->
+<div id="ctx-menu" role="menu" aria-label="ページ操作メニュー" tabindex="-1"></div>
+
+<!-- ===== Feature 13: Drag Insert Tip ===== -->
+<div id="drag-insert-tip" aria-hidden="true">
+  <i class="fa-solid fa-arrow-right-to-bracket"></i>
+  <span id="drag-insert-tip-text">ここに挿入</span>
+</div>
+
+<!-- ===== Feature 14: Session Restore Toast ===== -->
+<div id="session-restore-modal" role="dialog" aria-modal="true" aria-label="セッション復元" style="display:none;">
+  <div class="srm-inner">
+    <div class="srm-icon"><i class="fa-solid fa-clock-rotate-left"></i></div>
+    <div class="srm-body">
+      <div class="srm-title">前回の作業を復元しますか？</div>
+      <div class="srm-meta" id="srm-meta">保存済みのセッションが見つかりました</div>
+    </div>
+    <div class="srm-actions">
+      <button class="btn btn-ok" id="srm-restore"><i class="fa-solid fa-rotate-left"></i> 復元する</button>
+      <button class="btn btn-gh" id="srm-discard">新規開始</button>
+    </div>
+    <button class="srm-close" id="srm-close" title="閉じる" aria-label="閉じる"><i class="fa-solid fa-xmark"></i></button>
+    <div class="srm-progress-wrap"><div class="srm-progress-bar" id="srm-progress-bar"></div></div>
+  </div>
+</div>
+
+<!-- ===================== SHORTCUTS MODAL ================ -->
+<div id="shortcuts-overlay" class="hidden overlay-common" role="dialog" aria-modal="true">
+  <div class="modal-box" style="width: 500px;">
+    <div class="modal-hd">
+      <div class="modal-title"><i class="fa-solid fa-keyboard"></i>キーボードショートカット</div>
+      <button class="vhd-btn close" id="shortcuts-close" title="閉じる [Esc]"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body" style="padding: 20px; overflow-y: auto; max-height: 70vh;">
+      <table class="shortcuts-table">
+        <tbody>
+          <tr><th colspan="2">一般</th></tr>
+          <tr><td><kbd>?</kbd></td><td>ショートカット一覧を表示</td></tr>
+          <tr><td><kbd>Ctrl</kbd> + <kbd>F</kbd></td><td>検索ボックスにフォーカス</td></tr>
+          <tr><td><kbd>Ctrl</kbd> + <kbd>V</kbd></td><td>クリップボードの画像を貼り付け</td></tr>
+          <tr><td><kbd>T</kbd> / <kbd>L</kbd></td><td>サムネイル表示 / リスト表示 切替</td></tr>
+          <tr><th colspan="2">選択・操作</th></tr>
+          <tr><td><kbd>Ctrl</kbd> + <kbd>A</kbd></td><td>すべて選択</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>選択解除 / モーダルを閉じる</td></tr>
+          <tr><td><kbd>Del</kbd> または <kbd>BS</kbd></td><td>選択したページを削除</td></tr>
+          <tr><td><kbd>Ctrl</kbd> + <kbd>D</kbd></td><td>選択したページを複製</td></tr>
+          <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>選択したページを左/右に90度回転</td></tr>
+          <tr><th colspan="2">履歴</th></tr>
+          <tr><td><kbd>Ctrl</kbd> + <kbd>Z</kbd></td><td>元に戻す (Undo)</td></tr>
+          <tr><td><kbd>Ctrl</kbd> + <kbd>Y</kbd> または <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></td><td>やり直し (Redo)</td></tr>
+          <tr><th colspan="2">ビューワー内</th></tr>
+          <tr><td><kbd>←</kbd> / <kbd>→</kbd> または <kbd>PgUp</kbd>/<kbd>PgDn</kbd></td><td>前 / 次のページへ</td></tr>
+          <tr><td><kbd>Home</kbd> / <kbd>End</kbd></td><td>最初 / 最後のページへ</td></tr>
+          <tr><td><kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd></td><td>単一 / 見開き / スクロール表示 切替</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== RANGE SELECT MODAL ================ -->
+<div id="range-sel-overlay" class="hidden overlay-common" role="dialog" aria-modal="true">
+  <div class="modal-box" style="width: 320px;">
+    <div class="modal-hd">
+      <div class="modal-title"><i class="fa-solid fa-list-ol"></i>ページ範囲選択</div>
+      <button class="vhd-btn close" id="range-sel-close" title="閉じる"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body" style="padding: 20px;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <input type="number" id="range-start" min="1" placeholder="開始" style="flex:1; padding:8px; border:1px solid var(--c-bd); border-radius:4px; font-family:var(--font-mo); outline:none;">
+        <span style="color:var(--c-t3)">〜</span>
+        <input type="number" id="range-end" min="1" placeholder="終了" style="flex:1; padding:8px; border:1px solid var(--c-bd); border-radius:4px; font-family:var(--font-mo); outline:none;">
+      </div>
+    </div>
+    <div class="modal-ft" style="padding: 12px 20px; border-top: 1px solid var(--c-bd); display:flex; justify-content:flex-end; gap:8px; background: #f8fafc;">
+      <button class="btn btn-gh" id="range-sel-cancel">キャンセル</button>
+      <button class="btn btn-pri" id="range-sel-apply"><i class="fa-solid fa-check"></i>選択</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== MEMO MODAL ================ -->
+<div id="memo-overlay" class="hidden overlay-common" role="dialog" aria-modal="true">
+  <div class="modal-box" style="width: 360px;">
+    <div class="modal-hd">
+      <div class="modal-title"><i class="fa-solid fa-note-sticky"></i>ページメモ</div>
+      <button class="vhd-btn close" id="memo-close" title="閉じる"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body" style="padding: 20px;">
+      <textarea id="memo-text" placeholder="ここにメモを入力..." style="width:100%; height:120px; padding:10px; border:1px solid var(--c-bd); border-radius:4px; font-family:var(--font); font-size:13px; resize:none; outline:none;"></textarea>
+    </div>
+    <div class="modal-ft" style="padding: 12px 20px; border-top: 1px solid var(--c-bd); display:flex; justify-content:space-between; background: #f8fafc;">
+      <button class="btn btn-err" id="memo-clear"><i class="fa-solid fa-trash"></i>クリア</button>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-gh" id="memo-cancel">キャンセル</button>
+        <button class="btn btn-pri" id="memo-save"><i class="fa-solid fa-check"></i>保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+
+</body></html>
