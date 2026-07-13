@@ -1,6 +1,29 @@
 'use strict';
 
 // ============================================================
+// APP VERSION / CHANGELOG
+// ============================================================
+const APP_VERSION = '1.2.0';
+const CHANGELOG = [
+  { version: '1.2.0', date: '2026-07-12', notes: [
+    'アプリ名の横にバージョン番号を表示（クリックで更新履歴を確認可能）',
+  ]},
+  { version: '1.1.2', date: '2026-07-02', notes: [
+    'ファビコンを追加',
+  ]},
+  { version: '1.1.1', date: '2026-07-02', notes: [
+    '「ページサイズを統一する」設定使用時などにPDFネイティブ出力経路で発生していたエラー（getPageSize/uniformSize未定義）を修正',
+    '印刷失敗時のエラー表示をブラウザのalert()から専用モーダルに変更',
+  ]},
+  { version: '1.1.0', date: '2026-07-02', notes: [
+    '印刷機能を追加（選択ページ印刷 / 全ページ印刷 / Ctrl+Pショートカット）',
+  ]},
+  { version: '1.0.0', date: '—', notes: [
+    'ベースライン（ページ編集・OCR・エクスポート等の既存機能一式）',
+  ]},
+];
+
+// ============================================================
 // LIBRARY CHECK — graceful degradation
 // ============================================================
 (function checkLibs() {
@@ -7301,6 +7324,56 @@ function initEvents() {
       localStorage.setItem('pdf_studio_theme', isDark ? 'dark' : 'light');
       btnTheme.innerHTML = isDark ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
     });
+  }
+
+  // バージョン表示・更新履歴ドロップダウン
+  const verBadge = g('app-version');
+  const verDd = g('version-dropdown');
+  if (verBadge) verBadge.textContent = 'v' + APP_VERSION;
+  if (verBadge && verDd) {
+    // ツールバーの隠れ防止のためbody直下に移動させる
+    if (verDd.parentElement !== document.body) {
+      document.body.appendChild(verDd);
+    }
+
+    const renderChangelog = () => {
+      verDd.innerHTML = `<div class="ver-dd-hd">更新履歴</div>` + CHANGELOG.map(entry => `
+        <div class="ver-dd-entry">
+          <div class="ver-dd-entry-hd">
+            <span class="ver-dd-num${entry.version === APP_VERSION ? ' current' : ''}">v${entry.version}</span>
+            <span class="ver-dd-date">${entry.date}</span>
+          </div>
+          <ul class="ver-dd-notes">${entry.notes.map(n => `<li>${n}</li>`).join('')}</ul>
+        </div>
+      `).join('');
+    };
+
+    verBadge.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isHidden = verDd.classList.contains('hidden');
+
+      if (isHidden) {
+        const rect = verBadge.getBoundingClientRect();
+        verDd.style.top = (rect.bottom + 6) + 'px';
+
+        let left = rect.left;
+        if (left < 10) left = 10;
+        if (left + 300 > window.innerWidth) left = window.innerWidth - 310;
+        verDd.style.left = left + 'px';
+
+        renderChangelog();
+      }
+
+      verDd.classList.toggle('hidden');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!verBadge.contains(e.target) && !verDd.contains(e.target)) {
+        verDd.classList.add('hidden');
+      }
+    });
+
+    window.addEventListener('resize', () => verDd.classList.add('hidden'));
   }
 
   // 履歴ドロップダウン
