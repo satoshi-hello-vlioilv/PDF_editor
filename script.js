@@ -3,8 +3,12 @@
 // ============================================================
 // APP VERSION / CHANGELOG
 // ============================================================
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.3.1';
 const CHANGELOG = [
+  { version: '1.3.1', date: '2026-10-12', notes: [
+    'OBJ / STL の3Dモデルで面の向きが揃っていない場合に面が欠けて表示される問題を修正（両面描画）',
+    '3Dデータ表示時は、適用できないビューワーの操作（補正・調整・ペイント・反転・画像保存など）を非表示に',
+  ]},
   { version: '1.3.0', date: '2026-10-12', notes: [
     'UI/UXを全面刷新：ツールバーを2段に整理（1段目=追加・履歴・検索・出力設定・保存・印刷／2段目=ページ操作）',
     'ページ操作は選択時のみ表示し、使用頻度の低い操作は「ページ」「編集」メニューに集約',
@@ -1206,9 +1210,12 @@ function load3DModel(fileData) {
         cleanup();
         // OBJ はマテリアルなしのことが多いので簡易マテリアルを割り当て
         obj.traverse(o => {
-          if (o.isMesh && !o.material.color) {
+          if (!o.isMesh) return;
+          if (!o.material.color) {
             o.material = new THREE.MeshStandardMaterial({ color: 0x8bc4f0, roughness: 0.6, metalness: 0.2 });
           }
+          // 面の向き（頂点順）が揃っていないモデルでも面が欠けないよう両面描画
+          (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.side = THREE.DoubleSide; });
         });
         resolve(obj);
       }, undefined, () => { cleanup(); resolve(null); });
@@ -1217,7 +1224,7 @@ function load3DModel(fileData) {
       loader.load(url, geometry => {
         cleanup();
         geometry.computeVertexNormals();
-        const mat  = new THREE.MeshStandardMaterial({ color: 0x8bc4f0, roughness: 0.5, metalness: 0.3 });
+        const mat  = new THREE.MeshStandardMaterial({ color: 0x8bc4f0, roughness: 0.5, metalness: 0.3, side: THREE.DoubleSide });
         resolve(new THREE.Mesh(geometry, mat));
       }, undefined, () => { cleanup(); resolve(null); });
     } else if (ext === 'prc') {
@@ -6274,7 +6281,8 @@ const Viewer = (() => {
     const needsTab3D = is3D || hasPDF3D;
 
     // PDF専用コントロールを 3D 時は隠す
-    const pdfOnlyBtns = [g('vhd-crop'), g('vhd-ocr'), g('vhd-rot-l'), g('vhd-rot-r'),
+    const pdfOnlyBtns = [g('vhd-crop'), g('vhd-scanfix'), g('vhd-adjust'), g('vhd-paint'),
+      g('vhd-ocr'), g('vhd-rot-l'), g('vhd-rot-r'), g('vhd-flip-h'), g('vhd-flip-v'), g('vhd-qr'), g('vhd-dl-img'), g('vhd-props'),
       g('vhd-fit-100'), g('vhd-fit-w'), g('vhd-fit-h'), g('vhd-zoom-ctrl')];
     pdfOnlyBtns.forEach(el => el && (el.style.display = is3D ? 'none' : ''));
     document.querySelectorAll('.vhd-divider').forEach((el, i) => {
