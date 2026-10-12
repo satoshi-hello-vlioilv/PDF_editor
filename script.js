@@ -3,8 +3,11 @@
 // ============================================================
 // APP VERSION / CHANGELOG
 // ============================================================
-const APP_VERSION = '1.3.1';
+const APP_VERSION = '1.3.2';
 const CHANGELOG = [
+  { version: '1.3.2', date: '2026-10-12', notes: [
+    'OCRの「テキスト層優先」を初期状態でONに変更（文字情報を持つPDFページはOCRせずそのまま抽出し、画像ページのみOCR）',
+  ]},
   { version: '1.3.1', date: '2026-10-12', notes: [
     'OBJ / STL の3Dモデルで面の向きが揃っていない場合に面が欠けて表示される問題を修正（両面描画）',
     '3Dデータ表示時は、適用できないビューワーの操作（補正・調整・ペイント・反転・画像保存など）を非表示に',
@@ -8274,7 +8277,19 @@ const OCR = (() => {
   let _items   = [];    // 処理対象ページ一覧
   let _results = [];    // [{ item, text, source, pageNum }]
   let _viewIdx = 0;
-  let _preferText = false;   // テキスト層優先モード（OFFが既定: 全ページTesseract実行）
+  const PREFER_TEXT_DEFAULT = true;   // テキスト層優先モード（ONが既定: テキスト層のあるページはOCRせず抽出）
+  let _preferText = PREFER_TEXT_DEFAULT;
+
+  // テキスト層優先トグルの状態とボタン表示を同期
+  function setPreferText(on) {
+    _preferText = on;
+    const ft = g('ocr-force-toggle');
+    if (!ft) return;
+    ft.classList.toggle('active', on);
+    ft.title = on
+      ? 'テキスト層優先モード ON — クリックで解除（全ページをOCRで読み取る）'
+      : 'テキスト層があるページはテキスト抽出を優先します（クリックでON）';
+  }
   // プレビュー非同期レンダリングキャンセル用
   let _prevToken = 0;
 
@@ -8438,7 +8453,7 @@ const OCR = (() => {
       for (let i = 0; i < _items.length; i++) {
         showProg(i + 1, _items.length, _preferText ? 'テキスト解析中' : 'OCR処理準備中');
 
-        // テキスト層優先モードでない場合（既定）: 全ページをOCR対象に
+        // テキスト層優先モードがOFFの場合: 全ページをOCR対象に
         if (!_preferText) {
           _results[i].source = 'ocr';
           needOCR = true;
@@ -8611,10 +8626,8 @@ const OCR = (() => {
 
     g('ocr-close').addEventListener('click', () => {
       g('ocr-overlay').classList.add('hidden');
-      // テキスト層優先モードをリセット（次回起動時はOCR優先の既定モードに）
-      _preferText = false;
-      const ft = g('ocr-force-toggle');
-      if (ft) ft.classList.remove('active');
+      // テキスト層優先モードを既定（ON）に戻す
+      setPreferText(PREFER_TEXT_DEFAULT);
     });
     g('ocr-nav-prev').addEventListener('click', () => navigateTo(_viewIdx - 1));
     g('ocr-nav-next').addEventListener('click', () => navigateTo(_viewIdx + 1));
@@ -8767,13 +8780,8 @@ const OCR = (() => {
     // 強制OCRトグル
     const forceToggle = g('ocr-force-toggle');
     if (forceToggle) {
-      forceToggle.addEventListener('click', () => {
-        _preferText = !_preferText;
-        forceToggle.classList.toggle('active', _preferText);
-        forceToggle.title = _preferText
-          ? 'テキスト層優先モード ON — クリックで解除（OCRのみに戻す）'
-          : 'テキスト層があるページはテキスト抽出を優先します（クリックでON）';
-      });
+      forceToggle.addEventListener('click', () => setPreferText(!_preferText));
+      setPreferText(PREFER_TEXT_DEFAULT);
     }
 
     // フォント設定（OCRテキストエリア）
