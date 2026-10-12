@@ -3,8 +3,16 @@
 // ============================================================
 // APP VERSION / CHANGELOG
 // ============================================================
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 const CHANGELOG = [
+  { version: '1.3.0', date: '2026-10-12', notes: [
+    'UI/UXを全面刷新：ツールバーを2段に整理（1段目=追加・履歴・検索・出力設定・保存・印刷／2段目=ページ操作）',
+    'ページ操作は選択時のみ表示し、使用頻度の低い操作は「ページ」「編集」メニューに集約',
+    'サイドバーを廃止してページ表示領域を拡大。読み込みファイルはページ上部のチップで表示',
+    '出力設定を右側ドロワーに移動し、既定から変更した設定数をボタンのバッジで表示',
+    'ページカードを刷新（ファイル色ドット・ホバーで用紙サイズ表示・横並びのホバー操作）、既定サイズを縮小して一覧性を向上',
+    'ビューワーを刷新：編集ツールをラベル付きで表示、ページ送り・ズーム・レイアウトを下部コントロールに集約、ページ一覧（フィルムストリップ）を追加',
+  ]},
   { version: '1.2.0', date: '2026-07-12', notes: [
     'アプリ名の横にバージョン番号を表示（クリックで更新履歴を確認可能）',
   ]},
@@ -76,7 +84,7 @@ const FILE_COLORS = [
 const THUMB_W       = 148;
 const CARD_SIZE_MIN = 60;
 const CARD_SIZE_MAX = 4000;
-const CARD_SIZE_DEF = 444;
+const CARD_SIZE_DEF = 170;
 const AREA_RATIO    = 1.35;
 
 // テキスト層に有意なテキストが存在するとみなす最小文字数（空白除き）
@@ -1371,6 +1379,8 @@ function patchThumbDOM(item) {
   if (!wrap) return;
   const area = wrap.querySelector('.pc-area');
   if (!area) return;
+  const sizeEl = wrap.querySelector('.pc-size');
+  if (sizeEl) sizeEl.textContent = paperSizeLabel(item);
 
   const badges = [];
   if (item.cropBox) badges.push(`<span class="badge-crop" title="クロップ適用中"><i class="fa-solid fa-crop-simple"></i></span>`);
@@ -1410,10 +1420,15 @@ function applyRot(area, item) {
 let _thumbResizeTimer = null;
 let _lastThumbCardW   = CARD_SIZE_DEF;
 
+// サイズスライダーは対数スケール (0〜100) — 小さいサイズ域でも細かく調整できるようにする
+const _SIZE_LOG_RANGE = Math.log(CARD_SIZE_MAX / CARD_SIZE_MIN);
+const sizeToSlider = size => Math.round(Math.log(size / CARD_SIZE_MIN) / _SIZE_LOG_RANGE * 100);
+const sliderToSize = v => Math.round(CARD_SIZE_MIN * Math.exp(v / 100 * _SIZE_LOG_RANGE));
+
 function setCardSize(val) {
   S.cardSize = Math.max(CARD_SIZE_MIN, Math.min(val, CARD_SIZE_MAX));
   const sl = g('size-slider');
-  if (sl && Number(sl.value) !== S.cardSize) sl.value = S.cardSize;
+  if (sl && sliderToSize(Number(sl.value)) !== S.cardSize) sl.value = sizeToSlider(S.cardSize);
   const sv = g('size-val');
   if (sv) {
     // 148pxを基準(100%)とした相対スケールパーセント
@@ -1888,6 +1903,8 @@ function rotatePage(itemId, delta, save = true) {
         item.pw = swap ? item.naturalPh : item.naturalPw;
         item.ph = swap ? item.naturalPw : item.naturalPh;
         applyRot(area, item);
+        const sizeEl = wrap.querySelector('.pc-size');
+        if (sizeEl) sizeEl.textContent = paperSizeLabel(item);
         scheduleMasonry();  // カード幅を即時更新（横長なら横長カードに）
       }
     }
@@ -3416,6 +3433,16 @@ const Viewer = (() => {
     g('vhd-close').addEventListener('click', close);
     g('vnav-prev').addEventListener('click', () => navigate(-1));
     g('vnav-next').addEventListener('click', () => navigate(1));
+    g('vpill-prev')?.addEventListener('click', () => navigate(-1));
+    g('vpill-next')?.addEventListener('click', () => navigate(1));
+    g('vpill-strip')?.addEventListener('click', () => {
+      const strip = g('viewer-strip');
+      if (!strip) return;
+      const show = strip.classList.contains('hidden');
+      strip.classList.toggle('hidden', !show);
+      g('vpill-strip').classList.toggle('active', show);
+      if (show) renderStrip();
+    });
     
     // 比較モード用左右独立ナビゲーション
     const cmpNavigate = (side, delta) => {
@@ -5788,9 +5815,9 @@ const Viewer = (() => {
       }
 
       const panel = g('viewer-render-panel');
-      // padding: 50px (上下左右の合計100px) を考慮してフィット領域を計算し、不要なスクロールバーを防ぐ
+      // padding (左右50px / 上50px / 下72px: 下部の表示コントロール分) を考慮してフィット領域を計算し、不要なスクロールバーを防ぐ
       const maxW  = (panel?.clientWidth  || 800) - 100; 
-      const maxH  = (panel?.clientHeight || 600) - 100;
+      const maxH  = (panel?.clientHeight || 600) - 122;
 
       const totalWBase = vp1_0.width + (vp2_0 ? vp2_0.width + 16 : 0);
       const maxHBase   = Math.max(vp1_0.height, vp2_0 ? vp2_0.height : 0);
@@ -6163,6 +6190,33 @@ const Viewer = (() => {
     }
   }
 
+  // ── ページ一覧（フィルムストリップ） ─────────────────────
+  function renderStrip() {
+    const strip = g('viewer-strip');
+    if (!strip || strip.classList.contains('hidden')) return;
+    strip.innerHTML = '';
+    _items.forEach((it, i) => {
+      const cell = document.createElement('button');
+      cell.className = 'vs-cell';
+      cell.title = `ページ ${i + 1}`;
+      cell.innerHTML = (it.thumbnail ? `<img src="${it.thumbnail}" alt="">` : `<span class="vs-ph"><i class="fa-regular fa-file"></i></span>`) + `<span class="vs-num">${i + 1}</span>`;
+      cell.addEventListener('click', () => {
+        const delta = _pageLayout === 'double' ? Math.floor(i / 2) - Math.floor(_idx / 2) : i - _idx;
+        if (delta) navigate(delta);
+      });
+      strip.appendChild(cell);
+    });
+    syncStrip();
+  }
+
+  function syncStrip() {
+    const strip = g('viewer-strip');
+    if (!strip || strip.classList.contains('hidden')) return;
+    const cells = strip.querySelectorAll('.vs-cell');
+    cells.forEach((c, i) => c.classList.toggle('on', i === _idx || (_pageLayout === 'double' && i === _idx + 1)));
+    cells[_idx]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
   function updateHeader() {
     const item = _items[_idx];
     const f    = item ? S.files.get(item.fileId) : null;
@@ -6190,6 +6244,13 @@ const Viewer = (() => {
     g('vnav-prev').disabled    = _idx <= 0;
     const maxIdx = _pageLayout === 'double' ? _items.length - 2 : _items.length - 1;
     g('vnav-next').disabled    = _idx >= Math.max(0, maxIdx);
+
+    // 下部の表示コントロール（ページ送り）とページ一覧を同期
+    const pg = g('vpill-pg');
+    if (pg) pg.textContent = `${_idx + 1}${_pageLayout === 'double' && _idx + 1 < _items.length ? '-' + (_idx + 2) : ''} / ${_items.length}`;
+    if (g('vpill-prev')) g('vpill-prev').disabled = g('vnav-prev').disabled;
+    if (g('vpill-next')) g('vpill-next').disabled = g('vnav-next').disabled;
+    syncStrip();
     g('vhd-flip-h')?.classList.toggle('active', !!item?.flipH);
     g('vhd-flip-v')?.classList.toggle('active', !!item?.flipV);
   }
@@ -6254,6 +6315,7 @@ const Viewer = (() => {
     initRenderPanelDOM();
     g('viewer-overlay').classList.remove('hidden');
     updateHeader();
+    renderStrip();
     updateCropBadge(false);
 
     if (is3D) {
@@ -6669,53 +6731,44 @@ function renderAll() {
   checkEmpty();
 }
 
+// 読み込みファイルをワークスペース上部のチップとして表示する（旧サイドバー）
 function renderSidebar() {
-  const fl = g('file-list');
-  
+  const strip = g('file-strip');
+  if (!strip) return;
+
   const activeFiles = new Map();
   S.ws.forEach(w => {
     activeFiles.set(w.fileId, (activeFiles.get(w.fileId) || 0) + 1);
   });
 
-  g('sb-cnt').textContent = `${activeFiles.size}件`;
+  strip.classList.toggle('hidden', activeFiles.size === 0);
+  strip.innerHTML = '';
+  if (activeFiles.size === 0) return;
 
-  if (activeFiles.size === 0) {
-    fl.innerHTML = `<div class="sb-empty">
-      <i class="fa-regular fa-folder-open"></i>
-      <p>PDFや画像を追加すると<br>ここに一覧表示されます</p></div>`;
-    return;
-  }
-  
-  fl.innerHTML = '';
+  strip.insertAdjacentHTML('beforeend', `<span class="fs-label">ファイル</span>`);
   S.files.forEach(f => {
     const count = activeFiles.get(f.id);
     if (!count) return;
 
-    const d = document.createElement('div');
-    d.className = 'fc';
-    const is3D   = f.fileType === '3d';
-    const fIcon  = is3D ? 'fa-solid fa-cube' : 'fa-regular fa-file-pdf';
-    const fLabel = is3D ? `3Dデータ (${(f.ext||'').toUpperCase()})` : `${count}ページ`;
+    const is3D     = f.fileType === '3d';
     const dispName = f.alias || f.name;
-    d.innerHTML = `
-      <div class="fc-dot" style="background:${f.color}"></div>
-      <div class="fc-info">
-        <div class="fc-name" title="${dispName}">${dispName}</div>
-        <div class="fc-meta"><i class="${fIcon}"></i>${fLabel}</div>
-      </div>
-      <div class="fc-acts">
-        ${!is3D ? `<button class="fc-btn info" title="文書プロパティを表示"
-          onclick="event.stopPropagation();DocProps.open('${f.id}')">
-          <i class="fa-solid fa-circle-info"></i></button>` : ''}
-        <button class="fc-btn" title="このファイルのページをすべて選択"
-          onclick="event.stopPropagation();selFile('${f.id}')">
-          <i class="fa-solid fa-check-square"></i></button>
-        <button class="fc-btn dng" title="このファイルを削除"
-          onclick="event.stopPropagation();removeFile('${f.id}')">
-          <i class="fa-solid fa-trash"></i></button>
-      </div>`;
-    d.addEventListener('click', () => selFile(f.id));
-    fl.appendChild(d);
+    const meta     = is3D ? `3D ${(f.ext || '').toUpperCase()}` : `${count}p`;
+    const chip = document.createElement('div');
+    chip.className = 'fchip';
+    chip.title = `${dispName}\nクリックでこのファイルの全ページを選択`;
+    chip.innerHTML = `
+      <span class="fchip-dot" style="background:${f.color}"></span>
+      <span class="fchip-name"></span>
+      <span class="fchip-meta">${meta}</span>
+      ${!is3D ? `<button class="fchip-btn" title="文書プロパティを表示"
+        onclick="event.stopPropagation();DocProps.open('${f.id}')">
+        <i class="fa-solid fa-circle-info"></i></button>` : ''}
+      <button class="fchip-btn dng" title="このファイルを削除"
+        onclick="event.stopPropagation();removeFile('${f.id}')">
+        <i class="fa-solid fa-xmark"></i></button>`;
+    chip.querySelector('.fchip-name').textContent = dispName;
+    chip.addEventListener('click', () => selFile(f.id));
+    strip.appendChild(chip);
   });
 }
 
@@ -6765,6 +6818,21 @@ function renderWorkspace() {
   setCardSize(S.cardSize);
   initSort(target);
   if (S.view === 'th') layoutMasonry();
+}
+
+// ============================================================
+// PAPER SIZE LABEL — 例: "A4 縦" / "B5 横" / "100×150 mm"
+// ============================================================
+const PAPER_SIZES = [['A3', 297, 420], ['A4', 210, 297], ['A5', 148, 210], ['B4', 257, 364], ['B5', 182, 257], ['Letter', 216, 279], ['Legal', 216, 356]];
+function paperSizeLabel(item) {
+  if (!item?.pw || !item?.ph) return '';
+  // pw/ph は回転適用後の寸法 (pt)
+  const w = Math.round(item.pw / 2.835);
+  const h = Math.round(item.ph / 2.835);
+  const lo = Math.min(w, h), hi = Math.max(w, h);
+  const hit = PAPER_SIZES.find(([, a, b]) => Math.abs(lo - a) <= 2 && Math.abs(hi - b) <= 2);
+  if (!hit) return `${w}×${h} mm`;
+  return `${hit[0]} ${w <= h ? '縦' : '横'}`;
 }
 
 // ============================================================
@@ -6826,7 +6894,8 @@ function makeCard(item, f, idx) {
     </div>
     <div class="pc-foot">
       <span class="pc-num">${idx + 1}</span>
-      <span class="fb" style="background:${f.color}" title="ダブルクリックで名前を編集">${truncName(dispName)}</span>
+      <span class="fb" style="--fb-c:${f.color}" title="${escHtml(dispName)}（ダブルクリックで名前を編集）">${escHtml(truncName(dispName))}</span>
+      ${!is3D ? `<span class="pc-size">${paperSizeLabel(item)}</span>` : ''}
     </div>`;
 
   applyRot(d.querySelector('.pc-area'), item);
@@ -7166,6 +7235,17 @@ function syncUI() {
   setD('btn-exp-zip', !hs);
   setD('btn-print-sel', !hs);
   setD('btn-print-all', !hp);
+  setD('btn-save-menu', !hp);
+  setD('btn-print-menu', !hp);
+
+  // ツールバー2段目: 選択状態に応じてページ操作を出し分ける
+  g('tb-r2')?.classList.toggle('nosel', !hs);
+  const hint = g('ctx-hint-text');
+  if (hint) hint.textContent = hp
+    ? 'ページをクリックで選択（Shift / Ctrl で複数）・ダブルクリックで開く'
+    : 'PDF・画像をドロップするか「追加」から読み込みます';
+  const selCount = g('sel-count');
+  if (selCount) selCount.textContent = `${S.sel.size} ページ選択中`;
   updateStat();
 }
 
@@ -7302,7 +7382,7 @@ function initEvents() {
     });
   }
 
-  g('size-slider').addEventListener('input', e => setCardSize(Number(e.target.value)));
+  g('size-slider').addEventListener('input', e => setCardSize(sliderToSize(Number(e.target.value))));
   g('btn-th-fit-100')?.addEventListener('click', () => applyThumbnailFit('100'));
   g('btn-th-fit-w')?.addEventListener('click', () => applyThumbnailFit('w'));
   g('btn-th-fit-h')?.addEventListener('click', () => applyThumbnailFit('h'));
@@ -7419,17 +7499,6 @@ function initEvents() {
     document.querySelector('.tb-r2')?.addEventListener('scroll', () => histDd.classList.add('hidden'), { passive: true });
   }
 
-  // サイドバー切り替え
-  const btnSb = g('btn-toggle-sb');
-  if (btnSb) {
-    btnSb.addEventListener('click', () => {
-      const isClosed = g('app').classList.toggle('sb-closed');
-      localStorage.setItem('pdf_studio_sb_closed', isClosed ? '1' : '0');
-      // サイドバー開閉アニメーション完了後にMasonryレイアウトを更新
-      setTimeout(scheduleMasonry, 200);
-    });
-  }
-
   g('tb-search')?.addEventListener('input', e => filterSearch(e.target.value));
   g('btn-search-opt')?.addEventListener('click', e => {
     _searchStrict = !_searchStrict;
@@ -7516,6 +7585,7 @@ function initEvents() {
     if (e.target === g('print-error-overlay')) g('print-error-overlay').classList.add('hidden');
   });
 
+  g('btn-shortcuts')?.addEventListener('click', () => g('shortcuts-overlay').classList.remove('hidden'));
   g('shortcuts-close')?.addEventListener('click', () => {
     g('shortcuts-overlay').classList.add('hidden');
   });
@@ -7546,6 +7616,9 @@ function initEvents() {
       if (e.key === 'Escape') shortcutsOverlay.classList.add('hidden');
       return;
     }
+
+    if (e.key === 'Escape' && closeDropdowns()) return;
+    if (e.key === 'Escape' && SettingsDrawer.isOpen && !Viewer.isOpen) { SettingsDrawer.close(); return; }
     
     if (e.key === '?' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
       if (shortcutsOverlay) shortcutsOverlay.classList.remove('hidden');
@@ -7616,15 +7689,6 @@ function initEvents() {
     if (e.dataTransfer.files.length) loadFiles(e.dataTransfer.files);
   });
 
-  const sd = g('sb-drop');
-  sd.addEventListener('click', () => fi.click());
-  sd.addEventListener('dragover',  e => { e.preventDefault(); sd.classList.add('dov'); });
-  sd.addEventListener('dragleave', () => sd.classList.remove('dov'));
-  sd.addEventListener('drop', e => {
-    e.preventDefault(); sd.classList.remove('dov');
-    if (e.dataTransfer.files.length) loadFiles(e.dataTransfer.files);
-  });
-
   // ── Ctrl+V 画像貼り付け ──────────────────────────────────
   document.addEventListener('paste', e => {
     // フォーム要素またはモーダルが開いている場合はスキップ
@@ -7648,6 +7712,123 @@ function initEvents() {
     }
   });
 }
+
+// ============================================================
+// DROPDOWN MENUS — ツールバー / ビューワーの階層メニュー
+// ============================================================
+// .dd > .dd-trig (ボタン) + .dd-pop (メニュー)。ポップアップは position:fixed で
+// 親の overflow に切られないよう、開くたびにトリガー位置から配置する。
+function closeDropdowns(except) {
+  let closed = false;
+  document.querySelectorAll('.dd.open').forEach(dd => {
+    if (dd === except) return;
+    dd.classList.remove('open');
+    dd.querySelector('.dd-trig')?.setAttribute('aria-expanded', 'false');
+    closed = true;
+  });
+  return closed;
+}
+
+function placeDropdown(dd) {
+  const trig = dd.querySelector('.dd-trig');
+  const pop  = dd.querySelector('.dd-pop');
+  if (!trig || !pop) return;
+  const r  = trig.getBoundingClientRect();
+  const pw = pop.offsetWidth;
+  const ph = pop.offsetHeight;
+  let left = dd.classList.contains('dd-right') ? r.right - pw : r.left;
+  left = Math.max(8, Math.min(left, window.innerWidth - pw - 8));
+  let top = r.bottom + 6;
+  if (dd.classList.contains('dd-up') || top + ph > window.innerHeight - 8) top = Math.max(8, r.top - ph - 6);
+  pop.style.left = left + 'px';
+  pop.style.top  = top + 'px';
+}
+
+function initDropdowns() {
+  document.querySelectorAll('.dd').forEach(dd => {
+    const trig = dd.querySelector('.dd-trig');
+    const pop  = dd.querySelector('.dd-pop');
+    if (!trig || !pop) return;
+    trig.setAttribute('aria-expanded', 'false');
+    trig.addEventListener('click', e => {
+      e.stopPropagation();
+      const willOpen = !dd.classList.contains('open');
+      closeDropdowns();
+      if (!willOpen) return;
+      dd.classList.add('open');
+      trig.setAttribute('aria-expanded', 'true');
+      placeDropdown(dd);
+    });
+    // メニュー項目の実行後は閉じる（無効な項目のクリックでは閉じない）
+    pop.addEventListener('click', e => {
+      const item = e.target.closest('.dd-item');
+      if (item && !item.disabled) closeDropdowns();
+    });
+  });
+  document.addEventListener('click', e => { if (!e.target.closest('.dd')) closeDropdowns(); });
+  window.addEventListener('resize', () => closeDropdowns());
+  document.addEventListener('scroll', () => closeDropdowns(), true);
+}
+
+// ============================================================
+// SETTINGS DRAWER — 出力設定（保存・印刷に適用）
+// ============================================================
+const SettingsDrawer = (() => {
+  // 有効時にチップ・バッジで知らせる設定
+  const OPTIONS = [
+    ['meta-include-text',  'テキスト反映'],
+    ['meta-uniform-a4',    'サイズ統一'],
+    ['meta-grayscale',     '白黒'],
+    ['meta-pageno',        'ページ番号'],
+    ['meta-compress',      '圧縮'],
+    ['meta-include-paint', 'ペイント含む'],
+    ['meta-masking',       '黒塗り'],
+    ['meta-encrypt',       'パスワード'],
+  ];
+  let _open = false;
+  let _defaults = {};
+
+  function refresh() {
+    const on = OPTIONS.filter(([id]) => g(id)?.checked);
+    // バッジは「既定値から変更された設定」の数（既定ONのペイント描画などは数えない）
+    const changed = OPTIONS.filter(([id]) => g(id) && g(id).checked !== _defaults[id]).length;
+    const badge = g('settings-badge');
+    if (badge) {
+      badge.textContent = changed;
+      badge.classList.toggle('hidden', changed === 0);
+      g('btn-settings').title = changed ? `出力設定（保存・印刷時に適用）— 既定から ${changed} 件変更` : '出力設定（保存・印刷時に適用）';
+    }
+    const chips = g('settings-chips');
+    if (chips) {
+      chips.innerHTML = on.length
+        ? on.map(([, label]) => `<span class="sd-chip"><i class="fa-solid fa-check"></i>${label}</span>`).join('')
+        : `<span class="sd-chip off">標準設定（変換なし）</span>`;
+    }
+  }
+
+  function open() {
+    _open = true;
+    g('settings-drawer')?.classList.remove('hidden');
+    g('btn-settings')?.classList.add('active');
+    g('btn-settings')?.setAttribute('aria-expanded', 'true');
+  }
+  function close() {
+    _open = false;
+    g('settings-drawer')?.classList.add('hidden');
+    g('btn-settings')?.classList.remove('active');
+    g('btn-settings')?.setAttribute('aria-expanded', 'false');
+  }
+
+  function init() {
+    OPTIONS.forEach(([id]) => { _defaults[id] = !!g(id)?.checked; });
+    g('btn-settings')?.addEventListener('click', () => (_open ? close() : open()));
+    g('settings-close')?.addEventListener('click', close);
+    g('settings-drawer')?.addEventListener('change', refresh);
+    refresh();
+  }
+
+  return { init, open, close, refresh, get isOpen() { return _open; } };
+})();
 
 // ============================================================
 // DOCUMENT PROPERTIES
@@ -8001,7 +8182,7 @@ const ImageUtils = (() => {
 const MacroRunner = (() => {
   function triggerChange(id) {
     const el = document.getElementById(id);
-    if(el) el.dispatchEvent(new Event('change'));
+    if(el) el.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
   async function runScanStd() {
@@ -8054,7 +8235,7 @@ const MacroRunner = (() => {
     const compSlider = document.getElementById('compress-slider');
     if (compSlider) { compSlider.value = 0.6; triggerChange('compress-slider'); }
     
-    alert('設定を「セキュア共有」用に変更しました。\nヘッダーの「全て保存」からエクスポートしてください。');
+    alert('設定を「セキュア共有」用に変更しました。\nツールバーの「保存」からエクスポートしてください。');
   }
 
   async function runPrintReady() {
@@ -8071,7 +8252,7 @@ const MacroRunner = (() => {
     const pos = document.getElementById('pageno-pos');
     if(pos) pos.value = 'bottom-center';
     
-    alert('設定を「印刷用」に変更しました。\nヘッダーの「全て保存」からエクスポートしてください。');
+    alert('設定を「印刷用」に変更しました。\nツールバーの「保存」からエクスポートしてください。');
   }
 
   return { runScanStd, runRedactSafe, runPrintReady };
@@ -8849,12 +9030,9 @@ async function init() {
     btnTheme.innerHTML = isDark ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
   }
 
-  // サイドバー状態の復元
-  if (localStorage.getItem('pdf_studio_sb_closed') === '1') {
-    g('app').classList.add('sb-closed');
-  }
-
   initEvents();
+  initDropdowns();
+  SettingsDrawer.init();
   Viewer.buildDOM();
   OCR.setupEvents();
   DocProps.setupEvents();
@@ -8877,14 +9055,5 @@ async function init() {
     new ResizeObserver(() => scheduleMasonry()).observe(g('page-container'));
   }
 
-  // ── サイドバータブ切替 ─────────────────────────────────────
-  document.querySelectorAll('.sb-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      const target = tab.dataset.tab;
-      document.querySelectorAll('.sb-tab').forEach(t => t.classList.toggle('active', t === tab));
-      g('sbp-files')   ?.classList.toggle('hidden', target !== 'files');
-      g('sbp-settings')?.classList.toggle('hidden', target !== 'settings');
-    });
-  });
 }
 init();
